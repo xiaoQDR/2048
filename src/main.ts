@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import './style.css';
 import { LEVELS, getLevel, type LevelConfig } from './levels';
 
-const APP_VERSION='v0.2.0-levels';
+const APP_VERSION='v0.2.1-test';
+const TEST_UNLOCK_ALL=true;
 
 type Direction='left'|'right'|'up'|'down';
 type Snapshot={grid:number[][];score:number;movesLeft:number;rngState:number};
@@ -61,7 +62,7 @@ class LevelScene extends Phaser.Scene{
       const start=chapter*10;
       for(let i=0;i<10;i++){
         const level=LEVELS[start+i],col=i%5,row=Math.floor(i/5)+chapter*2;
-        const x=130+col*205,y=330+row*150,open=level.id<=p.unlocked;
+        const x=130+col*205,y=330+row*150,open=TEST_UNLOCK_ALL||level.id<=p.unlocked;
         const bg=this.add.rectangle(x,y,154,118,open?0x9b8b7a:0xd3cbc1).setInteractive(open?{useHandCursor:true}:undefined);
         addLabel(this,x,y-15,open?String(level.id):'🔒',38,open?'#fff':'#90877e');
         const stars=p.stars[level.id]||0;
@@ -69,7 +70,7 @@ class LevelScene extends Phaser.Scene{
         if(open)bg.on('pointerup',()=>this.scene.start('game',{levelId:level.id}));
       }
     }
-    this.add.text(W/2,1785,`已解锁 ${Math.min(p.unlocked,50)} / 50`,{fontSize:'30px',color:'#887e72'}).setOrigin(.5);
+    this.add.text(W/2,1785,TEST_UNLOCK_ALL?'测试模式 · 全部关卡已解锁':`已解锁 ${Math.min(p.unlocked,50)} / 50`,{fontSize:'30px',color:'#887e72'}).setOrigin(.5);
     this.add.text(W/2,1850,APP_VERSION,{fontSize:'24px',color:'#aaa095'}).setOrigin(.5);
   }
 }
