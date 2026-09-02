@@ -4,7 +4,7 @@ import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {move2048,hasLegalMove,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.9.1-no-gap';
+const APP_VERSION='v0.9.2-full-tile';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -15,7 +15,7 @@ type Snapshot={
   ice:[string,number][];orders:number[];ants:[string,AntState][];rescued:number;targetDone:boolean;
 };
 interface Progress{unlocked:number;stars:Record<number,number>}
-const COLORS:Record<number,number>={0:0xcfc4b5,2:0xeee4da,4:0xede0c8,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xf65e3b,128:0xedcf72,256:0xedcc61,512:0xedc850,1024:0xedc53f,2048:0xedc22e};
+const COLORS:Record<number,number>={0:0xcfc4b5,2:0xeee4da,4:0xe6d2b5,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xe84a35,128:0xedcf72,256:0xe8bd48,512:0xd99b32,1024:0xc97932,2048:0xb85d2c,4096:0x9b5de5,8192:0x4f86d9,16384:0x28a99e};
 const key=(r:number,c:number)=>r+','+c;
 const parseKey=(k:string)=>k.split(',').map(Number) as [number,number];
 const empty=(rows:number,cols=rows)=>Array.from({length:rows},()=>Array(cols).fill(0));
