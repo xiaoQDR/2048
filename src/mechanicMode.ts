@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.9.0-core-rebuild';
+const W=1080,H=1920,VERSION='v0.9.1-no-gap';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
@@ -200,7 +200,7 @@ export class MechanicTestScene extends Phaser.Scene{
     if(this.level.id===48)this.blockers.add(K(p[0],p[1]));
   }
   render(motions:LabMotion[]=[]){
-    this.board.removeAll(true);const cell=142,gap=14,ox=115,oy=520;
+    this.board.removeAll(true);const cell=154,gap=0,ox=155,oy=520;
     const center=(r:number,c:number)=>({x:ox+c*(cell+gap)+cell/2,y:oy+r*(cell+gap)+cell/2});
     const addPiece=(v:number,x:number,y:number)=>{
       const piece=this.add.container(x,y);
