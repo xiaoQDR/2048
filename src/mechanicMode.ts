@@ -199,8 +199,9 @@ export class MechanicTestScene extends Phaser.Scene{
     const seq=this.level.id===47?[8,16,8,4]:this.level.id===41?[2,2,4,2]:[this.nextValue];this.grid[p[0]][p[1]]=this.level.id===48?-3:seq[this.turn%seq.length];
     if(this.level.id===48)this.blockers.add(K(p[0],p[1]));
   }
-  render(){
+  render(motions:LabMotion[]=[]){
     this.board.removeAll(true);const cell=142,gap=14,ox=115,oy=520;
+    const center=(r:number,c:number)=>({x:ox+c*(cell+gap)+cell/2,y:oy+r*(cell+gap)+cell/2});
     const addPiece=(v:number,x:number,y:number)=>{
       const piece=this.add.container(x,y);
       piece.add(this.add.rectangle(0,0,cell-12,cell-12,colors[v]||0xb39e87));
@@ -209,6 +210,7 @@ export class MechanicTestScene extends Phaser.Scene{
       else{const name=v===-1?'万能':v===-3?'污染':v===-5?'幽灵':String(v);piece.add(text(this,0,0,name,v<0?22:43,v>4?'#fff':'#655b51'))}
       return piece;
     };
+    const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<5;r++)for(let c=0;c<5;c++){
       const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap),cx=x+cell/2,cy=y+cell/2;if(this.voids.has(k))continue;
       this.board.add(this.add.rectangle(cx,cy,cell,cell,0x9c8f80));
@@ -220,22 +222,29 @@ export class MechanicTestScene extends Phaser.Scene{
       }
       this.board.add(this.add.rectangle(cx,cy,cell-12,cell-12,colors[0]));
       const v=this.grid[r][c];
-      if(v){
-        const piece=addPiece(v,cx,cy);this.board.add(piece);
-        if(this.turn>0){
-          const d=(cell+gap)*.72,tx=piece.x,ty=piece.y;
-          if(this.lastDir==='left')piece.x+=d;if(this.lastDir==='right')piece.x-=d;
-          if(this.lastDir==='up')piece.y+=d;if(this.lastDir==='down')piece.y-=d;
-          piece.setAlpha(.45);this.tweens.add({targets:piece,x:tx,y:ty,alpha:1,duration:165,ease:'Cubic.Out'});
-          piece.setScale(.94);this.tweens.add({targets:piece,scale:1,duration:125,delay:95,ease:'Back.Out'});
-        }
-      }
+      if(v){const piece=addPiece(v,cx,cy);finalPieces.set(k,piece);if(motions.length)piece.setAlpha(0);this.board.add(piece)}
       if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell-17,cell-17).setAlpha(.9));
       const s=this.special.get(k);
       if(s==='锁链')this.board.add(this.add.image(cx,cy,'lab-chain').setDisplaySize(cell*.84,cell*.84));
       else if(s==='黏液')this.board.add(this.add.image(cx,cy,'lab-slime').setDisplaySize(cell*.72,cell*.72).setAlpha(.8));
       else if((s==='入口'||s==='出口')&&this.level.id>=11&&this.level.id<=13)this.board.add(this.add.image(cx,cy,'lab-portal').setDisplaySize(cell*.55,cell*.55).setAlpha(.75));
       else if(s)this.board.add(this.add.text(cx,cy-cell*.36,s,{fontSize:'16px',color:'#4b4037',backgroundColor:'#ffffffcc'}).setOrigin(.5));
+    }
+    if(motions.length){
+      let remaining=motions.length;
+      const finish=()=>{if(--remaining>0)return;finalPieces.forEach(piece=>{piece.setAlpha(1);piece.setScale(.82);this.tweens.add({targets:piece,scale:1,duration:125,ease:'Back.Out'})})};
+      const leading=(m:LabMotion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?4-m.fromC:this.lastDir==='up'?m.fromR:4-m.fromR;
+      for(const motion of motions){
+        const from=center(motion.fromR,motion.fromC),ghost=addPiece(motion.value,from.x,from.y);this.board.add(ghost);
+        const path:Array<{x:number;y:number}>=[];let r=motion.fromR,c=motion.fromC;
+        while(r!==motion.toR||c!==motion.toC){
+          if(r<motion.toR)r++;else if(r>motion.toR)r--;else if(c<motion.toC)c++;else if(c>motion.toC)c--;
+          path.push(center(r,c));
+        }
+        if(!path.length){finish();continue}
+        let index=0;const step=()=>{const point=path[index++];this.tweens.add({targets:ghost,x:point.x,y:point.y,duration:82,ease:'Sine.InOut',onComplete:()=>{if(index<path.length)step();else{ghost.destroy();finish()}}})};
+        this.time.delayedCall(leading(motion)*18,step);
+      }
     }
     const max=Math.max(...this.grid.flat()),done=this.level.id===33?max===this.level.target:max>=this.level.target;
     this.status.setText(`剩余 ${this.moves} 步\n分数 ${this.score}\n目标 ${this.level.target}\n${this.failed?'规则失败':done?'目标完成':''}${this.level.id===40?'\n连击 ×'+this.combo:''}${this.level.id===49?'\n下一个 '+this.nextValue:''}`);
