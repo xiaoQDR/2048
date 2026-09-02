@@ -3,10 +3,11 @@ import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 
-const APP_VERSION='v0.8.0-slide-svg';
+const APP_VERSION='v0.8.1-true-motion';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
+type Motion={fromR:number;fromC:number;toR:number;toC:number;value:number;merged:boolean};
 type AntState={revealed:boolean;rescued:boolean};
 type Snapshot={
   grid:number[][];score:number;movesLeft:number;rngState:number;
@@ -29,23 +30,33 @@ function collapse(line:number[],size:number){
   while(out.length<size)out.push(0);return {line:out,gained};
 }
 function moveGrid(grid:number[][],dir:Direction,fixed:Set<string>){
-  const rows=grid.length,cols=grid[0].length,next=clone(grid);let gained=0;
+  const rows=grid.length,cols=grid[0].length,next=clone(grid),motions:Motion[]=[];
   const horizontal=dir==='left'||dir==='right',reverse=dir==='right'||dir==='down';
-  const lineCount=horizontal?rows:cols,lineLength=horizontal?cols:rows;
+  const lineCount=horizontal?rows:cols,lineLength=horizontal?cols:rows;let gained=0;
   for(let lineIndex=0;lineIndex<lineCount;lineIndex++){
     const positions:Array<[number,number]>=Array.from({length:lineLength},(_,i)=>horizontal?[lineIndex,i]:[i,lineIndex]);
     let start=0;
     for(let end=0;end<=lineLength;end++){
-      const isBoundary=end===lineLength||fixed.has(key(...positions[end]));
-      if(!isBoundary)continue;
-      const segment=positions.slice(start,end);
-      let values=segment.map(([r,c])=>grid[r][c]);if(reverse)values.reverse();
-      const result=collapse(values,segment.length);gained+=result.gained;
-      if(reverse)result.line.reverse();
-      segment.forEach(([r,c],i)=>next[r][c]=result.line[i]);start=end+1;
+      const boundary=end===lineLength||fixed.has(key(...positions[end]));
+      if(!boundary)continue;
+      const segment=positions.slice(start,end),oriented=reverse?[...segment].reverse():segment;
+      const items=oriented.map(([r,c])=>({value:grid[r][c],r,c})).filter(x=>x.value!==0);
+      segment.forEach(([r,c])=>next[r][c]=0);let write=0;
+      for(let i=0;i<items.length;i++){
+        const item=items[i],dest=oriented[write++];
+        if(item.value===items[i+1]?.value){
+          const other=items[++i],result=item.value*2;next[dest[0]][dest[1]]=result;gained+=result;
+          motions.push({fromR:item.r,fromC:item.c,toR:dest[0],toC:dest[1],value:item.value,merged:true});
+          motions.push({fromR:other.r,fromC:other.c,toR:dest[0],toC:dest[1],value:other.value,merged:true});
+        }else{
+          next[dest[0]][dest[1]]=item.value;
+          motions.push({fromR:item.r,fromC:item.c,toR:dest[0],toC:dest[1],value:item.value,merged:false});
+        }
+      }
+      start=end+1;
     }
   }
-  return {grid:next,gained,moved:JSON.stringify(grid)!==JSON.stringify(next)};
+  return{grid:next,gained,motions,moved:JSON.stringify(grid)!==JSON.stringify(next)};
 }
 function canMove(g:number[][],fixed:Set<string>,blockers:Set<string>){
   const rows=g.length,cols=g[0].length;
@@ -143,8 +154,8 @@ class GameScene extends Phaser.Scene{
     this.previous=this.snapshot();this.grid=result.grid;this.score+=result.gained;this.movesLeft--;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.gained);this.collectOrders();this.updateAnts(before);
-    if(this.isComplete()){this.render(true);this.complete();return}
-    this.addRandom();this.render(true);
+    if(this.isComplete()){this.render(true,result.motions);this.complete();return}
+    this.addRandom();this.render(true,result.motions);
     if(this.movesLeft<=0||!canMove(this.grid,this.fixed(),this.blockers))this.showResult(false,0);
   }
   thawIce(before:number[][],gained:number){
@@ -187,32 +198,51 @@ class GameScene extends Phaser.Scene{
     if(this.config.rescueAnts)lines.push(`${this.rescued>=this.config.rescueAnts?'✓':'○'} 放出蚂蚁 ${this.rescued}/${this.config.rescueAnts}`);
     return lines.join('\n');
   }
-  render(animate:boolean){
+  render(animate:boolean,motions:Motion[]=[]){
     this.board.removeAll(true);
     const rows=this.grid.length,cols=this.grid[0].length;
     const cell=Math.min((this.boardSize-this.gap*(cols+1))/cols,(this.boardSize-this.gap*(rows+1))/rows);
     const actualW=cols*cell+(cols+1)*this.gap,actualH=rows*cell+(rows+1)*this.gap;
     const ox=this.bx+(this.boardSize-actualW)/2,oy=this.by+(this.boardSize-actualH)/2;
+    const center=(r:number,c:number)=>({x:ox+this.gap+c*(cell+this.gap)+cell/2,y:oy+this.gap+r*(cell+this.gap)+cell/2});
+    const makePiece=(v:number,x:number,y:number)=>{
+      const piece=this.add.container(x,y);
+      piece.add(this.add.rectangle(0,0,cell,cell,COLORS[v]||0x3c3a32));
+      const digits=String(v).length;
+      piece.add(this.add.text(0,2,String(v),{fontFamily:'Arial Black',fontSize:(digits<3?Math.min(88,cell*.38):Math.min(70,cell*.3))+'px',color:v<=4?'#776e65':'#fff'}).setOrigin(.5));
+      return piece;
+    };
+    const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
-      const x=ox+this.gap+c*(cell+this.gap),y=oy+this.gap+r*(cell+this.gap),v=this.grid[r][c],k=key(r,c),tile=this.add.container(x+cell/2,y+cell/2);
-      if(this.voids.has(k))continue;
-      this.board.add(this.add.rectangle(x+cell/2,y+cell/2,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
+      const k=key(r,c),p=center(r,c);if(this.voids.has(k))continue;
+      this.board.add(this.add.rectangle(p.x,p.y,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
       if(this.blockers.has(k)){
-        tile.add(this.add.rectangle(0,0,cell,cell,0x79543a));
-        tile.add(this.add.image(0,0,'art-stump').setDisplaySize(cell*.88,cell*.88));
-      }else{
-        tile.add(this.add.rectangle(0,0,cell,cell,COLORS[v]||0x3c3a32));
-        const ant=this.ants.get(k);
-        if(ant?.revealed&&!ant.rescued&&!v)tile.add(this.add.image(0,0,'art-ant').setDisplaySize(cell*.62,cell*.62));
-        if(v){const digits=String(v).length;tile.add(this.add.text(0,2,String(v),{fontFamily:'Arial Black',fontSize:(digits<3?Math.min(88,cell*.38):Math.min(70,cell*.3))+'px',color:v<=4?'#776e65':'#fff'}).setOrigin(.5))}
-        if(this.ice.has(k)){const layer=this.ice.get(k)!;tile.add(this.add.image(0,0,'art-ice').setDisplaySize(cell-7,cell-7).setAlpha(.9));if(layer===2)tile.add(label(this,cell*.3,-cell*.31,'2',Math.min(30,cell*.15),'#ffffff'))}
+        const stump=this.add.container(p.x,p.y);
+        stump.add(this.add.rectangle(0,0,cell,cell,0x79543a));
+        stump.add(this.add.image(0,0,'art-stump').setDisplaySize(cell*.88,cell*.88));this.board.add(stump);continue;
       }
-      this.board.add(tile);if(animate&&!this.blockers.has(k)){
-        const distance=(cell+this.gap)*.72,tx=tile.x,ty=tile.y;
-        if(this.lastDir==='left')tile.x+=distance;if(this.lastDir==='right')tile.x-=distance;
-        if(this.lastDir==='up')tile.y+=distance;if(this.lastDir==='down')tile.y-=distance;
-        tile.setAlpha(.35);this.tweens.add({targets:tile,x:tx,y:ty,alpha:1,duration:165,ease:'Cubic.Out'});
-        if(v){tile.setScale(.94);this.tweens.add({targets:tile,scale:1,duration:130,delay:105,ease:'Back.Out'})}
+      this.board.add(this.add.rectangle(p.x,p.y,cell,cell,COLORS[0]));
+      const ant=this.ants.get(k);
+      if(ant?.revealed&&!ant.rescued&&!this.grid[r][c])this.board.add(this.add.image(p.x,p.y,'art-ant').setDisplaySize(cell*.62,cell*.62));
+      const v=this.grid[r][c];
+      if(v){const piece=makePiece(v,p.x,p.y);finalPieces.set(k,piece);this.board.add(piece)}
+      if(this.ice.has(k)){
+        const ice=this.add.image(p.x,p.y,'art-ice').setDisplaySize(cell-7,cell-7).setAlpha(.9);this.board.add(ice);
+        if(this.ice.get(k)===2)this.board.add(label(this,p.x+cell*.3,p.y-cell*.31,'2',Math.min(30,cell*.15),'#fff'));
+      }
+    }
+    if(animate&&motions.length){
+      finalPieces.forEach(piece=>piece.setAlpha(0));
+      let remaining=motions.length;
+      const finish=()=>{
+        if(--remaining>0)return;
+        finalPieces.forEach(piece=>{piece.setAlpha(1);piece.setScale(.82);this.tweens.add({targets:piece,scale:1,duration:125,ease:'Back.Out'})});
+      };
+      for(const motion of motions){
+        const from=center(motion.fromR,motion.fromC),to=center(motion.toR,motion.toC);
+        const ghost=makePiece(motion.value,from.x,from.y);this.board.add(ghost);
+        const distance=Math.abs(motion.toR-motion.fromR)+Math.abs(motion.toC-motion.fromC);
+        this.tweens.add({targets:ghost,x:to.x,y:to.y,duration:115+distance*38,ease:'Cubic.Out',onComplete:()=>{ghost.destroy();finish()}});
       }
     }
     this.movesText.setText(String(this.movesLeft));this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
