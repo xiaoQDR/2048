@@ -4,7 +4,7 @@ import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {move2048,hasLegalMove,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.9.3-checkerboard';
+const APP_VERSION='v0.9.4-no-flash';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -199,11 +199,13 @@ class GameScene extends Phaser.Scene{
       hidden.forEach(k=>finalPieces.get(k)?.setAlpha(0));
       const ghosts:Phaser.GameObjects.Container[]=[];let remaining=0,finished=false;
       const reveal=()=>{
-        if(finished)return;finished=true;ghosts.forEach(g=>g.destroy());
+        if(finished)return;finished=true;
         hidden.forEach(k=>finalPieces.get(k)?.setAlpha(1));
         for(const m of mergedCells)finalPieces.get(key(m.r,m.c))?.setAlpha(1);
         if(spawned)finalPieces.get(key(spawned.r,spawned.c))?.setAlpha(1);
-        this.animating=false;onDone?.();
+        this.tweens.add({targets:ghosts,alpha:0,duration:48,ease:'Linear',onComplete:()=>{
+          ghosts.forEach(g=>g.destroy());this.animating=false;onDone?.();
+        }});
       };
       for(const motion of motions){
         const from=center(motion.fromR,motion.fromC),to=center(motion.toR,motion.toC),ghost=makePiece(motion.value,from.x,from.y);ghosts.push(ghost);this.board.add(ghost);
