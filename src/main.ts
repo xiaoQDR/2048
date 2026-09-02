@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 
-const APP_VERSION='v0.6.0-islands';
+const APP_VERSION='v0.6.1-portrait';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -112,7 +112,7 @@ class GameScene extends Phaser.Scene{
     const t=this.add.text(x+w/2,y+61,value,{fontSize:value.length>5?'29px':'42px',fontStyle:'bold',color:'#fff'}).setOrigin(.5,0);
     if(moves)this.movesText=t;if(score)this.scoreText=t;
   }
-  mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return (this.config.boardRows||this.config.boardSize)+'×'+(this.config.boardCols||this.config.boardSize)+' '+name}
+  mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return (this.config.boardCols||this.config.boardSize)+'×'+(this.config.boardRows||this.config.boardSize)+' '+name}
   fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys()])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
