@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.9.2-full-tile';
+const W=1080,H=1920,VERSION='v0.9.3-checkerboard';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
@@ -213,14 +213,14 @@ export class MechanicTestScene extends Phaser.Scene{
     const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<5;r++)for(let c=0;c<5;c++){
       const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap),cx=x+cell/2,cy=y+cell/2;if(this.voids.has(k))continue;
-      this.board.add(this.add.rectangle(cx,cy,cell,cell,0x9c8f80));
+      const floorColor=(r+c)%2===0?0xc8bdae:0xaea295;
+      this.board.add(this.add.rectangle(cx,cy,cell,cell,floorColor));
       if(this.blockers.has(k)){
         const obstacle=this.add.container(cx,cy);obstacle.add(this.add.rectangle(0,0,cell,cell,0x76543c));
         if(this.level.id===1)obstacle.add(this.add.image(0,0,'lab-stump').setDisplaySize(cell*.82,cell*.82));
         else if(this.level.id===48)obstacle.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.76,cell*.76));
         else obstacle.add(text(this,0,0,this.special.get(k)||'障碍',22,'#fff'));this.board.add(obstacle);continue;
       }
-      this.board.add(this.add.rectangle(cx,cy,cell,cell,colors[0]));
       const v=this.grid[r][c];
       if(v){const piece=addPiece(v,cx,cy);finalPieces.set(k,piece);if(motions.length)piece.setAlpha(0);this.board.add(piece)}
       if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell,cell).setAlpha(.9));
@@ -232,7 +232,7 @@ export class MechanicTestScene extends Phaser.Scene{
     }
     if(motions.length){
       let remaining=motions.length;
-      const finish=()=>{if(--remaining>0)return;finalPieces.forEach(piece=>{piece.setAlpha(1);piece.setScale(.82);this.tweens.add({targets:piece,scale:1,duration:125,ease:'Back.Out'})})};
+      const finish=()=>{if(--remaining>0)return;finalPieces.forEach(piece=>piece.setAlpha(1))};
       const leading=(m:LabMotion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?4-m.fromC:this.lastDir==='up'?m.fromR:4-m.fromR;
       for(const motion of motions){
         const from=center(motion.fromR,motion.fromC),ghost=addPiece(motion.value,from.x,from.y);this.board.add(ghost);
