@@ -3,7 +3,7 @@ import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 
-const APP_VERSION='v0.8.1-true-motion';
+const APP_VERSION='v0.8.2-cell-path';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -238,11 +238,22 @@ class GameScene extends Phaser.Scene{
         if(--remaining>0)return;
         finalPieces.forEach(piece=>{piece.setAlpha(1);piece.setScale(.82);this.tweens.add({targets:piece,scale:1,duration:125,ease:'Back.Out'})});
       };
+      const leading=(m:Motion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?cols-1-m.fromC:this.lastDir==='up'?m.fromR:rows-1-m.fromR;
       for(const motion of motions){
-        const from=center(motion.fromR,motion.fromC),to=center(motion.toR,motion.toC);
-        const ghost=makePiece(motion.value,from.x,from.y);this.board.add(ghost);
-        const distance=Math.abs(motion.toR-motion.fromR)+Math.abs(motion.toC-motion.fromC);
-        this.tweens.add({targets:ghost,x:to.x,y:to.y,duration:115+distance*38,ease:'Cubic.Out',onComplete:()=>{ghost.destroy();finish()}});
+        const from=center(motion.fromR,motion.fromC),ghost=makePiece(motion.value,from.x,from.y);this.board.add(ghost);
+        const path:Array<{x:number;y:number}>=[];let r=motion.fromR,c=motion.fromC;
+        while(r!==motion.toR||c!==motion.toC){
+          if(r<motion.toR)r++;else if(r>motion.toR)r--;else if(c<motion.toC)c++;else if(c>motion.toC)c--;
+          path.push(center(r,c));
+        }
+        if(!path.length){finish();continue}
+        let index=0;
+        const step=()=>{
+          const point=path[index++];this.tweens.add({targets:ghost,x:point.x,y:point.y,duration:82,ease:'Sine.InOut',onComplete:()=>{
+            if(index<path.length)step();else{ghost.destroy();finish()}
+          }});
+        };
+        this.time.delayedCall(leading(motion)*18,step);
       }
     }
     this.movesText.setText(String(this.movesLeft));this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
