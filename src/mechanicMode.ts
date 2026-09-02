@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.9.3-checkerboard';
+const W=1080,H=1920,VERSION='v0.9.4-no-flash';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
@@ -86,7 +86,7 @@ export class MechanicSelectScene extends Phaser.Scene{
 export class MechanicTestScene extends Phaser.Scene{
   level!:MechanicLevel;grid=empty();voids=new Set<string>();blockers=new Set<string>();ice=new Map<string,number>();
   special=new Map<string,string>();moves=0;score=0;combo=0;turn=0;gateTimer=0;nextValue=2;failed=false;
-  board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';
+  board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';animating=false;
   constructor(){super('mechanic-test')}
   preload(){
     this.load.svg('lab-stump','./assets/stump.svg');
@@ -158,8 +158,8 @@ export class MechanicTestScene extends Phaser.Scene{
     return f;
   }
   act(dir:Dir){
-    if(this.moves<=0)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
-    this.grid=m.grid;this.moves--;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
+    if(this.moves<=0||this.animating)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
+    this.animating=true;this.grid=m.grid;this.moves--;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
     const shouldSpawn=this.level.id!==45||m.merges>0;if(shouldSpawn)this.spawn(dir);if(this.level.id===46)this.spawn(dir);this.render(m.motions);
   }
   effects(before:number[][],gained:number,merges:number,dir:Dir){
@@ -231,21 +231,24 @@ export class MechanicTestScene extends Phaser.Scene{
       else if(s)this.board.add(this.add.text(cx,cy-cell*.36,s,{fontSize:'16px',color:'#4b4037',backgroundColor:'#ffffffcc'}).setOrigin(.5));
     }
     if(motions.length){
-      let remaining=motions.length;
-      const finish=()=>{if(--remaining>0)return;finalPieces.forEach(piece=>piece.setAlpha(1))};
+      let remaining=motions.length,finished=false;const ghosts:Phaser.GameObjects.Container[]=[];
+      const arrive=()=>{
+        if(--remaining>0||finished)return;finished=true;finalPieces.forEach(piece=>piece.setAlpha(1));
+        this.tweens.add({targets:ghosts,alpha:0,duration:48,ease:'Linear',onComplete:()=>{ghosts.forEach(g=>g.destroy());this.animating=false}});
+      };
       const leading=(m:LabMotion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?4-m.fromC:this.lastDir==='up'?m.fromR:4-m.fromR;
       for(const motion of motions){
-        const from=center(motion.fromR,motion.fromC),ghost=addPiece(motion.value,from.x,from.y);this.board.add(ghost);
+        const from=center(motion.fromR,motion.fromC),ghost=addPiece(motion.value,from.x,from.y);ghosts.push(ghost);this.board.add(ghost);
         const path:Array<{x:number;y:number}>=[];let r=motion.fromR,c=motion.fromC;
         while(r!==motion.toR||c!==motion.toC){
           if(r<motion.toR)r++;else if(r>motion.toR)r--;else if(c<motion.toC)c++;else if(c>motion.toC)c--;
           path.push(center(r,c));
         }
-        if(!path.length){finish();continue}
-        let index=0;const step=()=>{const point=path[index++];this.tweens.add({targets:ghost,x:point.x,y:point.y,duration:82,ease:'Sine.InOut',onComplete:()=>{if(index<path.length)step();else{ghost.destroy();finish()}}})};
+        if(!path.length){arrive();continue}
+        let index=0;const step=()=>{const point=path[index++];this.tweens.add({targets:ghost,x:point.x,y:point.y,duration:82,ease:'Sine.InOut',onComplete:()=>{if(index<path.length)step();else arrive()}})};
         this.time.delayedCall(leading(motion)*18,step);
       }
-    }
+    }else this.animating=false;
     const max=Math.max(...this.grid.flat()),done=this.level.id===33?max===this.level.target:max>=this.level.target;
     this.status.setText(`剩余 ${this.moves} 步\n分数 ${this.score}\n目标 ${this.level.target}\n${this.failed?'规则失败':done?'目标完成':''}${this.level.id===40?'\n连击 ×'+this.combo:''}${this.level.id===49?'\n下一个 '+this.nextValue:''}`);
     textCleanup(this);this.add.text(W/2,1425,'滑动棋盘观察机制变化',{fontSize:'28px',color:'#887e72'}).setOrigin(.5).setName('lab-hint');
