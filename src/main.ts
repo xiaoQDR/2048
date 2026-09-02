@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 
-const APP_VERSION='v0.5.0-varsize';
+const APP_VERSION='v0.6.0-islands';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -15,7 +15,7 @@ interface Progress{unlocked:number;stars:Record<number,number>}
 const COLORS:Record<number,number>={0:0xcfc4b5,2:0xeee4da,4:0xede0c8,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xf65e3b,128:0xedcf72,256:0xedcc61,512:0xedc850,1024:0xedc53f,2048:0xedc22e};
 const key=(r:number,c:number)=>r+','+c;
 const parseKey=(k:string)=>k.split(',').map(Number) as [number,number];
-const empty=(n:number)=>Array.from({length:n},()=>Array(n).fill(0));
+const empty=(rows:number,cols=rows)=>Array.from({length:rows},()=>Array(cols).fill(0));
 const clone=(g:number[][])=>g.map(r=>[...r]);
 const loadProgress=():Progress=>{try{return {...{unlocked:1,stars:{}},...JSON.parse(localStorage.getItem('phaser2048-level-progress')||'{}')}}catch{return {unlocked:1,stars:{}}}};
 const saveProgress=(p:Progress)=>localStorage.setItem('phaser2048-level-progress',JSON.stringify(p));
@@ -28,13 +28,14 @@ function collapse(line:number[],size:number){
   while(out.length<size)out.push(0);return {line:out,gained};
 }
 function moveGrid(grid:number[][],dir:Direction,fixed:Set<string>){
-  const n=grid.length,next=clone(grid);let gained=0;
+  const rows=grid.length,cols=grid[0].length,next=clone(grid);let gained=0;
   const horizontal=dir==='left'||dir==='right',reverse=dir==='right'||dir==='down';
-  for(let lineIndex=0;lineIndex<n;lineIndex++){
-    const positions:Array<[number,number]>=Array.from({length:n},(_,i)=>horizontal?[lineIndex,i]:[i,lineIndex]);
+  const lineCount=horizontal?rows:cols,lineLength=horizontal?cols:rows;
+  for(let lineIndex=0;lineIndex<lineCount;lineIndex++){
+    const positions:Array<[number,number]>=Array.from({length:lineLength},(_,i)=>horizontal?[lineIndex,i]:[i,lineIndex]);
     let start=0;
-    for(let end=0;end<=n;end++){
-      const isBoundary=end===n||fixed.has(key(...positions[end]));
+    for(let end=0;end<=lineLength;end++){
+      const isBoundary=end===lineLength||fixed.has(key(...positions[end]));
       if(!isBoundary)continue;
       const segment=positions.slice(start,end);
       let values=segment.map(([r,c])=>grid[r][c]);if(reverse)values.reverse();
@@ -46,8 +47,8 @@ function moveGrid(grid:number[][],dir:Direction,fixed:Set<string>){
   return {grid:next,gained,moved:JSON.stringify(grid)!==JSON.stringify(next)};
 }
 function canMove(g:number[][],fixed:Set<string>,blockers:Set<string>){
-  const n=g.length;
-  for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(!fixed.has(key(r,c))&&!g[r][c])return true;
+  const rows=g.length,cols=g[0].length;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(!fixed.has(key(r,c))&&!g[r][c])return true;
   for(const d of ['left','right','up','down'] as Direction[])if(moveGrid(g,d,fixed).moved)return true;
   return false;
 }
@@ -88,7 +89,10 @@ class GameScene extends Phaser.Scene{
   init(data:{levelId?:number}){this.config=getLevel(data.levelId||1)}
   create(){
     this.cameras.main.setBackgroundColor('#f6f1e8');this.add.text(W-35,H-25,APP_VERSION,{fontSize:'21px',color:'#aaa095'}).setOrigin(1,.5);
-    button(this,90,75,160,86,'‹ 关卡',()=>this.scene.start('levels'));label(this,W/2,96,`第 ${this.config.id} 关`,50);
+    button(this,90,75,150,86,'‹ 关卡',()=>this.scene.start('levels'));
+    label(this,430,96,`第 ${this.config.id} 关`,48);
+    button(this,775,75,150,82,'上一关',()=>this.scene.restart({levelId:this.config.id-1}),this.config.id>1);
+    button(this,950,75,150,82,'下一关',()=>this.scene.restart({levelId:this.config.id+1}),this.config.id<50);
     this.add.text(W/2,150,this.config.title,{fontSize:'27px',color:'#8b8175'}).setOrigin(.5);
     this.card(90,235,280,'机制',this.mechanicName());this.card(400,235,280,'剩余步数','0',true);this.card(710,235,280,'分数','0',false,true);
     button(this,90,420,260,95,'↶ 撤销',()=>this.undo());button(this,730,420,260,95,'重新开始',()=>this.restart());
@@ -108,11 +112,11 @@ class GameScene extends Phaser.Scene{
     const t=this.add.text(x+w/2,y+61,value,{fontSize:value.length>5?'29px':'42px',fontStyle:'bold',color:'#fff'}).setOrigin(.5,0);
     if(moves)this.movesText=t;if(score)this.scoreText=t;
   }
-  mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return this.config.boardSize+'×'+this.config.boardSize+' '+name}
+  mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return (this.config.boardRows||this.config.boardSize)+'×'+(this.config.boardCols||this.config.boardSize)+' '+name}
   fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys()])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
-    this.hideOverlay();const n=this.config.boardSize;this.grid=empty(n);this.score=0;this.movesLeft=this.config.moveLimit;this.rngState=this.config.seed;this.previous=null;
+    this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.movesLeft=this.config.moveLimit;this.rngState=this.config.seed;this.previous=null;
     this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.voids=new Set((this.config.voids||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
     for(const p of this.config.ice||[]){this.grid[p.r][p.c]=p.value;this.ice.set(key(p.r,p.c),p.layers)}
     for(const p of this.config.ants||[])this.ants.set(key(p.r,p.c),{revealed:false,rescued:false});
@@ -137,7 +141,7 @@ class GameScene extends Phaser.Scene{
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
-    for(const [k,layers] of [...this.ice]){const [r,c]=parseKey(k),near=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].some(([a,b])=>a>=0&&b>=0&&a<this.grid.length&&b<this.grid.length&&changed(a,b));
+    for(const [k,layers] of [...this.ice]){const [r,c]=parseKey(k),near=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].some(([a,b])=>a>=0&&b>=0&&a<this.grid.length&&b<this.grid[0].length&&changed(a,b));
       if(near){if(layers<=1)this.ice.delete(k);else this.ice.set(k,layers-1)}
     }
   }
@@ -157,7 +161,7 @@ class GameScene extends Phaser.Scene{
   }
   hasExit(r:number,c:number){
     const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid.length)return true;const k=key(a,b);if(this.grid[a][b]||this.blockers.has(k)||this.voids.has(k)||this.ice.has(k))return false}});
+    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid[0].length)return true;const k=key(a,b);if(this.grid[a][b]||this.blockers.has(k)||this.voids.has(k)||this.ice.has(k))return false}});
   }
   isComplete(){
     const targetOk=!this.config.target||this.targetDone,ordersOk=!this.config.orders||this.orders.length===0,iceOk=!this.config.clearIce||this.ice.size===0,antsOk=!this.config.rescueAnts||this.rescued>=this.config.rescueAnts;
@@ -176,9 +180,13 @@ class GameScene extends Phaser.Scene{
     return lines.join('\n');
   }
   render(animate:boolean){
-    this.board.removeAll(true);const n=this.config.boardSize,cell=(this.boardSize-this.gap*(n+1))/n;
-    for(let r=0;r<n;r++)for(let c=0;c<n;c++){
-      const x=this.bx+this.gap+c*(cell+this.gap),y=this.by+this.gap+r*(cell+this.gap),v=this.grid[r][c],k=key(r,c),tile=this.add.container(x+cell/2,y+cell/2);
+    this.board.removeAll(true);
+    const rows=this.grid.length,cols=this.grid[0].length;
+    const cell=Math.min((this.boardSize-this.gap*(cols+1))/cols,(this.boardSize-this.gap*(rows+1))/rows);
+    const actualW=cols*cell+(cols+1)*this.gap,actualH=rows*cell+(rows+1)*this.gap;
+    const ox=this.bx+(this.boardSize-actualW)/2,oy=this.by+(this.boardSize-actualH)/2;
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      const x=ox+this.gap+c*(cell+this.gap),y=oy+this.gap+r*(cell+this.gap),v=this.grid[r][c],k=key(r,c),tile=this.add.container(x+cell/2,y+cell/2);
       if(this.voids.has(k))continue;
       this.board.add(this.add.rectangle(x+cell/2,y+cell/2,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
       if(this.blockers.has(k)){
