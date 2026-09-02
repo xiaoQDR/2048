@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 
-const APP_VERSION='v0.3.0-mechanics';
+const APP_VERSION='v0.4.0-irregular';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -80,7 +80,7 @@ class LevelScene extends Phaser.Scene{
 
 class GameScene extends Phaser.Scene{
   config!:LevelConfig;grid:number[][]=[];score=0;movesLeft=0;rngState=1;previous:Snapshot|null=null;
-  blockers=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
+  blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
   objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=20;
@@ -108,21 +108,21 @@ class GameScene extends Phaser.Scene{
     const t=this.add.text(x+w/2,y+61,value,{fontSize:value.length>5?'29px':'42px',fontStyle:'bold',color:'#fff'}).setOrigin(.5,0);
     if(moves)this.movesText=t;if(score)this.scoreText=t;
   }
-  mechanicName(){if(this.config.ants)return'蚂蚁';if(this.config.orders)return'订单';if(this.config.ice)return'冰块';if(this.config.blockers)return'树桩';return'合成'}
-  fixed(){return new Set([...this.blockers,...this.ice.keys()])}
+  mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return name}
+  fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys()])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
     this.hideOverlay();const n=this.config.boardSize;this.grid=empty(n);this.score=0;this.movesLeft=this.config.moveLimit;this.rngState=this.config.seed;this.previous=null;
-    this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
+    this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.voids=new Set((this.config.voids||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
     for(const p of this.config.ice||[]){this.grid[p.r][p.c]=p.value;this.ice.set(key(p.r,p.c),p.layers)}
     for(const p of this.config.ants||[])this.ants.set(key(p.r,p.c),{revealed:false,rescued:false});
     this.addRandom();this.addRandom();
-    for(const [k,a] of this.ants){const [r,c]=parseKey(k);if(!this.grid[r][c]&&!this.blockers.has(k)&&!this.ice.has(k))this.grid[r][c]=2}
+    for(const [k,a] of this.ants){const [r,c]=parseKey(k);if(!this.grid[r][c]&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k))this.grid[r][c]=2}
     this.render(false);
   }
   addRandom(){
     const spots:Pos[]=[];this.grid.forEach((row,r)=>row.forEach((v,c)=>{
-      const k=key(r,c),ant=this.ants.get(k);if(!v&&!this.blockers.has(k)&&!this.ice.has(k)&&!(ant?.revealed&&!ant.rescued))spots.push({r,c});
+      const k=key(r,c),ant=this.ants.get(k);if(!v&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k)&&!(ant?.revealed&&!ant.rescued))spots.push({r,c});
     }));if(!spots.length)return;const p=spots[Math.floor(this.random()*spots.length)];this.grid[p.r][p.c]=this.random()<.9?2:4;
   }
   snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
@@ -157,7 +157,7 @@ class GameScene extends Phaser.Scene{
   }
   hasExit(r:number,c:number){
     const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid.length)return true;const k=key(a,b);if(this.grid[a][b]||this.blockers.has(k)||this.ice.has(k))return false}});
+    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid.length)return true;const k=key(a,b);if(this.grid[a][b]||this.blockers.has(k)||this.voids.has(k)||this.ice.has(k))return false}});
   }
   isComplete(){
     const targetOk=!this.config.target||this.targetDone,ordersOk=!this.config.orders||this.orders.length===0,iceOk=!this.config.clearIce||this.ice.size===0,antsOk=!this.config.rescueAnts||this.rescued>=this.config.rescueAnts;
@@ -177,9 +177,10 @@ class GameScene extends Phaser.Scene{
   }
   render(animate:boolean){
     this.board.removeAll(true);const n=this.config.boardSize,cell=(this.boardSize-this.gap*(n+1))/n;
-    this.board.add(this.add.rectangle(this.bx,this.by,this.boardSize,this.boardSize,0x9c8f80).setOrigin(0));
     for(let r=0;r<n;r++)for(let c=0;c<n;c++){
       const x=this.bx+this.gap+c*(cell+this.gap),y=this.by+this.gap+r*(cell+this.gap),v=this.grid[r][c],k=key(r,c),tile=this.add.container(x+cell/2,y+cell/2);
+      if(this.voids.has(k))continue;
+      this.board.add(this.add.rectangle(x+cell/2,y+cell/2,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
       if(this.blockers.has(k)){
         tile.add(this.add.rectangle(0,0,cell,cell,0x79543a));tile.add(this.add.circle(0,0,cell*.34,0x9a6b45));tile.add(label(this,0,0,'树桩',Math.min(35,cell*.16),'#f4dfbe'));
       }else{
