@@ -110,8 +110,8 @@ const irregular:Record<number,Pos[]>={
   42:P([0,3],[3,0]),
   44:P([0,0],[4,4]),
   47:P([0,0],[4,4],[2,2]),
-  49:P([0,5],[5,0],[2,2]),
-  50:P([0,5],[5,0],[5,5])
+  49:P([0,5],[5,0],[3,0]),
+  50:P([0,5],[5,0],[2,5])
 };
 for(const level of levels)level.voids=irregular[level.id];
 
