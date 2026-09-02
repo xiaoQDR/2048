@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.9.1-no-gap';
+const W=1080,H=1920,VERSION='v0.9.2-full-tile';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
 const parse=(k:string)=>k.split(',').map(Number) as [number,number];
 const clone=(g:number[][])=>g.map(r=>[...r]);
 const empty=(r=5,c=5)=>Array.from({length:r},()=>Array(c).fill(0));
-const colors:Record<number,number>={0:0xcfc4b5,2:0xeee4da,4:0xede0c8,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xf65e3b,128:0xedcf72,256:0xedcc61};
+const colors:Record<number,number>={0:0xcfc4b5,2:0xeee4da,4:0xe6d2b5,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xe84a35,128:0xedcf72,256:0xe8bd48,512:0xd99b32,1024:0xc97932,2048:0xb85d2c,4096:0x9b5de5,8192:0x4f86d9,16384:0x28a99e};
 
 function text(s:Phaser.Scene,x:number,y:number,value:string,size:number,color='#5f574d'){
   return s.add.text(x,y,value,{fontFamily:'Arial,sans-serif',fontSize:size+'px',fontStyle:'bold',color,align:'center',wordWrap:{width:920}}).setOrigin(.5);
@@ -204,7 +204,7 @@ export class MechanicTestScene extends Phaser.Scene{
     const center=(r:number,c:number)=>({x:ox+c*(cell+gap)+cell/2,y:oy+r*(cell+gap)+cell/2});
     const addPiece=(v:number,x:number,y:number)=>{
       const piece=this.add.container(x,y);
-      piece.add(this.add.rectangle(0,0,cell-12,cell-12,colors[v]||0xb39e87));
+      piece.add(this.add.rectangle(0,0,cell,cell,colors[v]||0xb39e87));
       if(v===-2)piece.add(this.add.image(0,0,'lab-bomb').setDisplaySize(cell*.72,cell*.72));
       else if(v===-4)piece.add(this.add.image(0,0,'lab-stone').setDisplaySize(cell*.72,cell*.72));
       else{const name=v===-1?'万能':v===-3?'污染':v===-5?'幽灵':String(v);piece.add(text(this,0,0,name,v<0?22:43,v>4?'#fff':'#655b51'))}
@@ -215,15 +215,15 @@ export class MechanicTestScene extends Phaser.Scene{
       const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap),cx=x+cell/2,cy=y+cell/2;if(this.voids.has(k))continue;
       this.board.add(this.add.rectangle(cx,cy,cell,cell,0x9c8f80));
       if(this.blockers.has(k)){
-        const obstacle=this.add.container(cx,cy);obstacle.add(this.add.rectangle(0,0,cell-12,cell-12,0x76543c));
+        const obstacle=this.add.container(cx,cy);obstacle.add(this.add.rectangle(0,0,cell,cell,0x76543c));
         if(this.level.id===1)obstacle.add(this.add.image(0,0,'lab-stump').setDisplaySize(cell*.82,cell*.82));
         else if(this.level.id===48)obstacle.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.76,cell*.76));
         else obstacle.add(text(this,0,0,this.special.get(k)||'障碍',22,'#fff'));this.board.add(obstacle);continue;
       }
-      this.board.add(this.add.rectangle(cx,cy,cell-12,cell-12,colors[0]));
+      this.board.add(this.add.rectangle(cx,cy,cell,cell,colors[0]));
       const v=this.grid[r][c];
       if(v){const piece=addPiece(v,cx,cy);finalPieces.set(k,piece);if(motions.length)piece.setAlpha(0);this.board.add(piece)}
-      if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell-17,cell-17).setAlpha(.9));
+      if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell,cell).setAlpha(.9));
       const s=this.special.get(k);
       if(s==='锁链')this.board.add(this.add.image(cx,cy,'lab-chain').setDisplaySize(cell*.84,cell*.84));
       else if(s==='黏液')this.board.add(this.add.image(cx,cy,'lab-slime').setDisplaySize(cell*.72,cell*.72).setAlpha(.8));
