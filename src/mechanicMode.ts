@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.8.0-slide-svg';
+const W=1080,H=1920,VERSION='v0.8.1-true-motion';
 type Dir='left'|'right'|'up'|'down';
 const K=(r:number,c:number)=>r+','+c;
 const parse=(k:string)=>k.split(',').map(Number) as [number,number];
@@ -191,37 +191,43 @@ export class MechanicTestScene extends Phaser.Scene{
   }
   render(){
     this.board.removeAll(true);const cell=142,gap=14,ox=115,oy=520;
-    for(let r=0;r<5;r++)for(let c=0;c<5;c++){const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap);if(this.voids.has(k))continue;
-      const box=this.add.container(x+cell/2,y+cell/2);box.add(this.add.rectangle(0,0,cell,cell,0x9c8f80));
+    const addPiece=(v:number,x:number,y:number)=>{
+      const piece=this.add.container(x,y);
+      piece.add(this.add.rectangle(0,0,cell-12,cell-12,colors[v]||0xb39e87));
+      if(v===-2)piece.add(this.add.image(0,0,'lab-bomb').setDisplaySize(cell*.72,cell*.72));
+      else if(v===-4)piece.add(this.add.image(0,0,'lab-stone').setDisplaySize(cell*.72,cell*.72));
+      else{const name=v===-1?'万能':v===-3?'污染':v===-5?'幽灵':String(v);piece.add(text(this,0,0,name,v<0?22:43,v>4?'#fff':'#655b51'))}
+      return piece;
+    };
+    for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+      const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap),cx=x+cell/2,cy=y+cell/2;if(this.voids.has(k))continue;
+      this.board.add(this.add.rectangle(cx,cy,cell,cell,0x9c8f80));
       if(this.blockers.has(k)){
-        box.add(this.add.rectangle(0,0,cell-12,cell-12,0x76543c));
-        if(this.level.id===1)box.add(this.add.image(0,0,'lab-stump').setDisplaySize(cell*.82,cell*.82));
-        else if(this.level.id===48)box.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.76,cell*.76));
-        else box.add(text(this,0,0,this.special.get(k)||'障碍',22,'#fff'));
-      }else{
-        const v=this.grid[r][c];box.add(this.add.rectangle(0,0,cell-12,cell-12,colors[v]||0xb39e87));
-        if(v){
-          if(v===-2)box.add(this.add.image(0,0,'lab-bomb').setDisplaySize(cell*.72,cell*.72));
-          else if(v===-4)box.add(this.add.image(0,0,'lab-stone').setDisplaySize(cell*.72,cell*.72));
-          else{const name=v===-1?'万能':v===-3?'污染':v===-5?'幽灵':String(v);box.add(text(this,0,0,name,v<0?22:43,v>4?'#fff':'#655b51'))}
+        const obstacle=this.add.container(cx,cy);obstacle.add(this.add.rectangle(0,0,cell-12,cell-12,0x76543c));
+        if(this.level.id===1)obstacle.add(this.add.image(0,0,'lab-stump').setDisplaySize(cell*.82,cell*.82));
+        else if(this.level.id===48)obstacle.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.76,cell*.76));
+        else obstacle.add(text(this,0,0,this.special.get(k)||'障碍',22,'#fff'));this.board.add(obstacle);continue;
+      }
+      this.board.add(this.add.rectangle(cx,cy,cell-12,cell-12,colors[0]));
+      const v=this.grid[r][c];
+      if(v){
+        const piece=addPiece(v,cx,cy);this.board.add(piece);
+        if(this.turn>0){
+          const d=(cell+gap)*.72,tx=piece.x,ty=piece.y;
+          if(this.lastDir==='left')piece.x+=d;if(this.lastDir==='right')piece.x-=d;
+          if(this.lastDir==='up')piece.y+=d;if(this.lastDir==='down')piece.y-=d;
+          piece.setAlpha(.45);this.tweens.add({targets:piece,x:tx,y:ty,alpha:1,duration:165,ease:'Cubic.Out'});
+          piece.setScale(.94);this.tweens.add({targets:piece,scale:1,duration:125,delay:95,ease:'Back.Out'});
         }
-        if(this.ice.has(k))box.add(this.add.image(0,0,'lab-ice').setDisplaySize(cell-17,cell-17).setAlpha(.9));
-        const s=this.special.get(k);
-        if(s==='锁链')box.add(this.add.image(0,0,'lab-chain').setDisplaySize(cell*.84,cell*.84));
-        else if(s==='黏液')box.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.72,cell*.72).setAlpha(.8));
-        else if((s==='入口'||s==='出口')&&this.level.id>=11&&this.level.id<=13)box.add(this.add.image(0,0,'lab-portal').setDisplaySize(cell*.55,cell*.55).setAlpha(.75));
-        else if(s)box.add(this.add.text(0,-cell*.36,s,{fontSize:'16px',color:'#4b4037',backgroundColor:'#ffffffcc'}).setOrigin(.5));
       }
-      this.board.add(box);
-      if(this.turn>0&&!this.blockers.has(k)){
-        const d=(cell+gap)*.7,tx=box.x,ty=box.y;
-        if(this.lastDir==='left')box.x+=d;if(this.lastDir==='right')box.x-=d;
-        if(this.lastDir==='up')box.y+=d;if(this.lastDir==='down')box.y-=d;
-        box.setAlpha(.35);this.tweens.add({targets:box,x:tx,y:ty,alpha:1,duration:165,ease:'Cubic.Out'});
-        if(this.grid[r][c]){box.setScale(.94);this.tweens.add({targets:box,scale:1,duration:130,delay:100,ease:'Back.Out'})}
-      }
+      if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell-17,cell-17).setAlpha(.9));
+      const s=this.special.get(k);
+      if(s==='锁链')this.board.add(this.add.image(cx,cy,'lab-chain').setDisplaySize(cell*.84,cell*.84));
+      else if(s==='黏液')this.board.add(this.add.image(cx,cy,'lab-slime').setDisplaySize(cell*.72,cell*.72).setAlpha(.8));
+      else if((s==='入口'||s==='出口')&&this.level.id>=11&&this.level.id<=13)this.board.add(this.add.image(cx,cy,'lab-portal').setDisplaySize(cell*.55,cell*.55).setAlpha(.75));
+      else if(s)this.board.add(this.add.text(cx,cy-cell*.36,s,{fontSize:'16px',color:'#4b4037',backgroundColor:'#ffffffcc'}).setOrigin(.5));
     }
-    const max=Math.max(...this.grid.flat());const done=this.level.id===33?max===this.level.target:max>=this.level.target;
+    const max=Math.max(...this.grid.flat()),done=this.level.id===33?max===this.level.target:max>=this.level.target;
     this.status.setText(`剩余 ${this.moves} 步\n分数 ${this.score}\n目标 ${this.level.target}\n${this.failed?'规则失败':done?'目标完成':''}${this.level.id===40?'\n连击 ×'+this.combo:''}${this.level.id===49?'\n下一个 '+this.nextValue:''}`);
     textCleanup(this);this.add.text(W/2,1425,'滑动棋盘观察机制变化',{fontSize:'28px',color:'#887e72'}).setOrigin(.5).setName('lab-hint');
     this.add.text(W/2,1815,VERSION,{fontSize:'22px',color:'#aaa095'}).setOrigin(.5).setName('lab-version');
