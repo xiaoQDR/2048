@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.8.1-true-motion';
+const W=1080,H=1920,VERSION='v0.8.2-cell-path';
 type Dir='left'|'right'|'up'|'down';
+type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
 const parse=(k:string)=>k.split(',').map(Number) as [number,number];
 const clone=(g:number[][])=>g.map(r=>[...r]);
@@ -17,37 +18,46 @@ function btn(s:Phaser.Scene,x:number,y:number,w:number,label:string,fn:()=>void,
   const t=text(s,x,y,label,29,enabled?'#fff':'#91877b');if(enabled)b.on('pointerup',fn);return[b,t];
 }
 function mergeLine(values:number[],id:number){
-  const a=values.filter(v=>v!==0),out:number[]=[];let gained=0,merges=0;
+  const a=values.filter(v=>v!==0),out:number[]=[],groups:number[][]=[];let gained=0,merges=0;
   if(id===31){
-    for(let i=0;i<a.length;){if(a[i]>0&&a[i]===a[i+1]&&a[i]===a[i+2]){out.push(a[i]*2);gained+=a[i]*2;merges++;i+=3}else{out.push(a[i]);i++}}
-    return{out,gained,merges};
+    for(let i=0;i<a.length;){
+      if(a[i]>0&&a[i]===a[i+1]&&a[i]===a[i+2]){out.push(a[i]*2);groups.push([i,i+1,i+2]);gained+=a[i]*2;merges++;i+=3}
+      else{out.push(a[i]);groups.push([i]);i++}
+    }
+    return{out,groups,gained,merges};
   }
   for(let i=0;i<a.length;i++){
-    const x=a[i],y=a[i+1];
-    const wildcard=id===25&&(x===-1||y===-1)&&y!==undefined;
+    const x=a[i],y=a[i+1],wildcard=id===25&&(x===-1||y===-1)&&y!==undefined;
     const adjacent=id===36&&x>0&&y>0&&(x===y*2||y===x*2);
     const parity=id===35&&x>0&&y>0&&x===y&&Math.log2(x)%2===Math.log2(y)%2;
     const normal=x>0&&x===y&&id!==35;
     if(wildcard||adjacent||parity||normal){
-      let v=wildcard?Math.max(x,y)*2:adjacent?Math.max(x,y)*2:id===37?x:x*2;
-      out.push(v);gained+=Math.max(0,v);merges++;i++;
-    }else out.push(x);
+      const v=wildcard?Math.max(x,y)*2:adjacent?Math.max(x,y)*2:id===37?x:x*2;
+      out.push(v);groups.push([i,i+1]);gained+=Math.max(0,v);merges++;i++;
+    }else{out.push(x);groups.push([i])}
   }
-  return{out,gained,merges};
+  return{out,groups,gained,merges};
 }
 function moveBoard(grid:number[][],dir:Dir,voids:Set<string>,fixed:Set<string>,id:number){
-  const rows=grid.length,cols=grid[0].length,next=clone(grid),horizontal=dir==='left'||dir==='right',reverse=dir==='right'||dir==='down';
+  const rows=grid.length,cols=grid[0].length,next=clone(grid),motions:LabMotion[]=[];
+  const horizontal=dir==='left'||dir==='right',reverse=dir==='right'||dir==='down';
   const count=horizontal?rows:cols,length=horizontal?cols:rows;let gained=0,merges=0;
   for(let li=0;li<count;li++){
     const ps:Array<[number,number]>=Array.from({length},(_,i)=>horizontal?[li,i]:[i,li]);let start=0;
-    for(let end=0;end<=length;end++){
-      const boundary=end===length||voids.has(K(...ps[end]))||fixed.has(K(...ps[end]));
-      if(!boundary)continue;const seg=ps.slice(start,end);let vals=seg.map(([r,c])=>grid[r][c]);if(reverse)vals.reverse();
-      const m=mergeLine(vals,id);gained+=m.gained;merges+=m.merges;while(m.out.length<seg.length)m.out.push(0);if(reverse)m.out.reverse();
-      seg.forEach(([r,c],i)=>next[r][c]=m.out[i]);start=end+1;
+    for(let finish=0;finish<=length;finish++){
+      const boundary=finish===length||voids.has(K(...ps[finish]))||fixed.has(K(...ps[finish]));
+      if(!boundary)continue;
+      const seg=ps.slice(start,finish),oriented=reverse?[...seg].reverse():seg;
+      const sourceItems=oriented.map(([r,c])=>({value:grid[r][c],r,c})).filter(x=>x.value!==0);
+      const m=mergeLine(sourceItems.map(x=>x.value),id);gained+=m.gained;merges+=m.merges;
+      seg.forEach(([r,c])=>next[r][c]=0);
+      m.out.forEach((value,outIndex)=>{const dest=oriented[outIndex];next[dest[0]][dest[1]]=value;
+        for(const sourceIndex of m.groups[outIndex]){const source=sourceItems[sourceIndex];motions.push({fromR:source.r,fromC:source.c,toR:dest[0],toC:dest[1],value:source.value})}
+      });
+      start=finish+1;
     }
   }
-  return{grid:next,gained,merges,moved:JSON.stringify(grid)!==JSON.stringify(next)};
+  return{grid:next,gained,merges,motions,moved:JSON.stringify(grid)!==JSON.stringify(next)};
 }
 
 export class HomeScene extends Phaser.Scene{
@@ -150,7 +160,7 @@ export class MechanicTestScene extends Phaser.Scene{
   act(dir:Dir){
     if(this.moves<=0)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
     this.grid=m.grid;this.moves--;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
-    const shouldSpawn=this.level.id!==45||m.merges>0;if(shouldSpawn)this.spawn(dir);if(this.level.id===46)this.spawn(dir);this.render();
+    const shouldSpawn=this.level.id!==45||m.merges>0;if(shouldSpawn)this.spawn(dir);if(this.level.id===46)this.spawn(dir);this.render(m.motions);
   }
   effects(before:number[][],gained:number,merges:number,dir:Dir){
     const id=this.level.id,max=Math.max(...this.grid.flat());
