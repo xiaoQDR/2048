@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
+import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 
-const APP_VERSION='v0.6.1-portrait';
+const APP_VERSION='v0.7.0-mechanic-lab';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -66,6 +67,7 @@ class LevelScene extends Phaser.Scene{
   constructor(){super('levels')}
   create(){
     this.cameras.main.setBackgroundColor('#f6f1e8');const p=loadProgress();
+    button(this,105,78,170,78,'‹ 主页',()=>this.scene.start('home'));
     label(this,W/2,100,'关卡',76);this.add.text(W/2,170,'每十关解锁一种新机制',{fontSize:'29px',color:'#887e72'}).setOrigin(.5);
     for(let chapter=0;chapter<5;chapter++)for(let i=0;i<10;i++){
       const level=LEVELS[chapter*10+i],col=i%5,row=Math.floor(i/5)+chapter*2,x=130+col*205,y=320+row*150;
@@ -215,4 +217,4 @@ class GameScene extends Phaser.Scene{
   hideOverlay(){this.overlay?.destroy();this.overlay=undefined}
 }
 
-new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#f6f1e8',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:W,height:H},render:{antialias:true},scene:[LevelScene,GameScene],input:{activePointers:2}});
+new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#f6f1e8',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:W,height:H},render:{antialias:true},scene:[HomeScene,MechanicSelectScene,MechanicTestScene,LevelScene,GameScene],input:{activePointers:2}});
