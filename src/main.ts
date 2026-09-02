@@ -4,7 +4,7 @@ import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {move2048,hasLegalMove,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.9.0-core-rebuild';
+const APP_VERSION='v0.9.1-no-gap';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -57,7 +57,7 @@ class GameScene extends Phaser.Scene{
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
   objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;
-  readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=20;
+  readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=0;
   constructor(){super('game')}
   preload(){
     this.load.svg('art-stump','./assets/stump.svg');
