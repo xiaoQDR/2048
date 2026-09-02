@@ -4,7 +4,7 @@ import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {move2048,hasLegalMove,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.9.2-full-tile';
+const APP_VERSION='v0.9.3-checkerboard';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -178,13 +178,13 @@ class GameScene extends Phaser.Scene{
     const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
       const k=key(r,c),p=center(r,c);if(this.voids.has(k))continue;
-      this.board.add(this.add.rectangle(p.x,p.y,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
+      const floorColor=(r+c)%2===0?0xc8bdae:0xaea295;
+      this.board.add(this.add.rectangle(p.x,p.y,cell,cell,floorColor));
       if(this.blockers.has(k)){
         const stump=this.add.container(p.x,p.y);
         stump.add(this.add.rectangle(0,0,cell,cell,0x79543a));
         stump.add(this.add.image(0,0,'art-stump').setDisplaySize(cell*.88,cell*.88));this.board.add(stump);continue;
       }
-      this.board.add(this.add.rectangle(p.x,p.y,cell,cell,COLORS[0]));
       const ant=this.ants.get(k);
       if(ant?.revealed&&!ant.rescued&&!this.grid[r][c])this.board.add(this.add.image(p.x,p.y,'art-ant').setDisplaySize(cell*.62,cell*.62));
       const v=this.grid[r][c];
@@ -201,8 +201,8 @@ class GameScene extends Phaser.Scene{
       const reveal=()=>{
         if(finished)return;finished=true;ghosts.forEach(g=>g.destroy());
         hidden.forEach(k=>finalPieces.get(k)?.setAlpha(1));
-        for(const m of mergedCells){const piece=finalPieces.get(key(m.r,m.c));if(piece){piece.setScale(.62);this.tweens.add({targets:piece,scale:1,duration:145,ease:'Back.Out'})}}
-        if(spawned){const piece=finalPieces.get(key(spawned.r,spawned.c));if(piece){piece.setScale(0);this.tweens.add({targets:piece,scale:1,duration:135,ease:'Back.Out'})}}
+        for(const m of mergedCells)finalPieces.get(key(m.r,m.c))?.setAlpha(1);
+        if(spawned)finalPieces.get(key(spawned.r,spawned.c))?.setAlpha(1);
         this.animating=false;onDone?.();
       };
       for(const motion of motions){
