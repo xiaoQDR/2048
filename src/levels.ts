@@ -5,6 +5,8 @@ export interface LevelConfig{
   id:number;
   chapter:number;
   boardSize:3|4|5|6;
+  boardRows?:number;
+  boardCols?:number;
   moveLimit:number;
   seed:number;
   title:string;
@@ -72,46 +74,51 @@ finalData.forEach((d,i)=>levels.push({
   clearIce:i===6||i===9
 }));
 
-const sizeFor=(id:number):3|4|5|6=>{
-  if(id<=5)return 3;
-  if(id<=15)return 4;
-  if(id<=20)return 5;
-  if(id<=25)return 4;
-  if(id<=30)return 5;
-  if(id<=35)return 4;
-  if(id<=40)return 5;
-  if(id<=43)return 4;
-  if(id<=48)return 5;
-  return 6;
+const dimensions=(id:number):[number,number]=>{
+  if(id<=5)return[3,3];
+  if(id<=15)return[4,4];
+  if(id<=20)return[5,5];
+  if(id<=25)return[4,4];
+  if(id<=30)return[5,6];
+  if(id<=35)return[4,5];
+  if(id<=40)return[6,6];
+  if(id<=43)return[5,5];
+  if(id<=46)return[6,7];
+  if(id<=48)return[7,8];
+  return[7,9];
 };
-const spread=(p:Pos,size:number):Pos=>({
-  r:Math.round(p.r*(size-1)/3),
-  c:Math.round(p.c*(size-1)/3)
+const spread=(p:Pos,rows:number,cols:number):Pos=>({
+  r:Math.round(p.r*(rows-1)/3),
+  c:Math.round(p.c*(cols-1)/3)
 });
 for(const level of levels){
-  const oldSize=level.boardSize,newSize=sizeFor(level.id);
-  level.boardSize=newSize;
-  if(oldSize===4&&newSize>4){
-    level.blockers=level.blockers?.map(p=>spread(p,newSize));
-    level.ants=level.ants?.map(p=>spread(p,newSize));
-    level.ice=level.ice?.map(p=>({...spread(p,newSize),value:p.value,layers:p.layers}));
+  const [rows,cols]=dimensions(level.id);
+  level.boardRows=rows;level.boardCols=cols;
+  if(level.boardSize===4&&(rows!==4||cols!==4)){
+    level.blockers=level.blockers?.map(p=>spread(p,rows,cols));
+    level.ants=level.ants?.map(p=>spread(p,rows,cols));
+    level.ice=level.ice?.map(p=>({...spread(p,rows,cols),value:p.value,layers:p.layers}));
   }
 }
+const M=(rows:number,cols:number,test:(r:number,c:number)=>boolean):Pos[]=>{
+  const result:Pos[]=[];for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(test(r,c))result.push({r,c});return result;
+};
 const irregular:Record<number,Pos[]>={
-  16:P([0,4]),
-  18:P([0,1],[4,3]),
-  20:P([0,0],[0,4],[4,0]),
+  16:P([0,4],[4,0]),
+  18:P([0,1],[0,2],[4,2],[4,3]),
+  20:P([0,0],[0,4],[2,2],[4,0]),
   24:P([0,0],[3,3]),
-  28:P([2,2]),
-  30:P([0,0],[0,4],[4,0],[4,4]),
-  34:P([0,0],[3,3]),
-  38:P([0,0],[4,4]),
-  40:P([0,0],[0,4],[4,0],[4,4]),
-  42:P([0,3],[3,0]),
-  44:P([0,0],[4,4]),
-  47:P([0,0],[4,4],[2,2]),
-  49:P([0,5],[5,0],[3,0]),
-  50:P([0,5],[5,0],[2,5])
+  28:P([1,2],[2,2],[2,3],[3,3]),
+  30:P([0,0],[0,5],[2,2],[2,3],[4,0],[4,5]),
+  34:P([0,0],[3,4]),
+  38:M(6,6,(r,c)=>r===c&&(r===1||r===4)),
+  40:M(6,6,(r,c)=>(r===2&&c>0&&c<5)||(c===3&&r>2&&r<5)),
+  42:P([0,4],[4,0],[2,2]),
+  44:M(6,7,(r,c)=>(r===0&&(c===0||c===6))||(r===5&&(c===0||c===6))||(r===2&&c===3)),
+  47:M(7,8,(r,c)=>(c===3&&r!==3)||(r===0&&(c===0||c===7))||(r===6&&(c===0||c===7))),
+  48:M(7,8,(r,c)=>(r===2&&c>1&&c<6)||(r===4&&c>1&&c<6)||(c===1&&r===3)),
+  49:M(7,9,(r,c)=>(r>=2&&r<=3&&c>=4&&c<=5)||(c===4&&r===1)||(r===0&&c===8)||(r===6&&c===0)),
+  50:M(7,9,(r,c)=>c===6||(r===0&&c===8)||(r===3&&c===3))
 };
 for(const level of levels)level.voids=irregular[level.id];
 
