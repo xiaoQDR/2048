@@ -3,7 +3,7 @@ import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 
-const APP_VERSION='v0.7.0-mechanic-lab';
+const APP_VERSION='v0.8.0-slide-svg';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -85,9 +85,14 @@ class GameScene extends Phaser.Scene{
   config!:LevelConfig;grid:number[][]=[];score=0;movesLeft=0;rngState=1;previous:Snapshot|null=null;
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
-  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;
+  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=20;
   constructor(){super('game')}
+  preload(){
+    this.load.svg('art-stump','./assets/stump.svg');
+    this.load.svg('art-ice','./assets/ice.svg');
+    this.load.svg('art-ant','./assets/ant.svg');
+  }
   init(data:{levelId?:number}){this.config=getLevel(data.levelId||1)}
   create(){
     this.cameras.main.setBackgroundColor('#f6f1e8');this.add.text(W-35,H-25,APP_VERSION,{fontSize:'21px',color:'#aaa095'}).setOrigin(1,.5);
@@ -134,6 +139,7 @@ class GameScene extends Phaser.Scene{
   snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
     if(this.overlay)return;const before=clone(this.grid),result=moveGrid(this.grid,dir,this.fixed());if(!result.moved)return;
+    this.lastDir=dir;
     this.previous=this.snapshot();this.grid=result.grid;this.score+=result.gained;this.movesLeft--;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.gained);this.collectOrders();this.updateAnts(before);
@@ -192,15 +198,22 @@ class GameScene extends Phaser.Scene{
       if(this.voids.has(k))continue;
       this.board.add(this.add.rectangle(x+cell/2,y+cell/2,cell+this.gap*.72,cell+this.gap*.72,0x9c8f80));
       if(this.blockers.has(k)){
-        tile.add(this.add.rectangle(0,0,cell,cell,0x79543a));tile.add(this.add.circle(0,0,cell*.34,0x9a6b45));tile.add(label(this,0,0,'树桩',Math.min(35,cell*.16),'#f4dfbe'));
+        tile.add(this.add.rectangle(0,0,cell,cell,0x79543a));
+        tile.add(this.add.image(0,0,'art-stump').setDisplaySize(cell*.88,cell*.88));
       }else{
         tile.add(this.add.rectangle(0,0,cell,cell,COLORS[v]||0x3c3a32));
         const ant=this.ants.get(k);
-        if(ant?.revealed&&!ant.rescued&&!v)tile.add(label(this,0,0,'🐜',Math.min(66,cell*.3),'#513d2f'));
+        if(ant?.revealed&&!ant.rescued&&!v)tile.add(this.add.image(0,0,'art-ant').setDisplaySize(cell*.62,cell*.62));
         if(v){const digits=String(v).length;tile.add(this.add.text(0,2,String(v),{fontFamily:'Arial Black',fontSize:(digits<3?Math.min(88,cell*.38):Math.min(70,cell*.3))+'px',color:v<=4?'#776e65':'#fff'}).setOrigin(.5))}
-        if(this.ice.has(k)){const layer=this.ice.get(k)!;tile.add(this.add.rectangle(0,0,cell-8,cell-8,0x86d7ef,.45).setStrokeStyle(9,0xcdf5ff));tile.add(label(this,cell*.29,-cell*.31,layer===2?'❄2':'❄',Math.min(32,cell*.15),'#eaffff'))}
+        if(this.ice.has(k)){const layer=this.ice.get(k)!;tile.add(this.add.image(0,0,'art-ice').setDisplaySize(cell-7,cell-7).setAlpha(.9));if(layer===2)tile.add(label(this,cell*.3,-cell*.31,'2',Math.min(30,cell*.15),'#ffffff'))}
       }
-      this.board.add(tile);if(animate&&!this.blockers.has(k)){tile.setScale(.88);this.tweens.add({targets:tile,scale:1,duration:120,ease:'Back.Out'})}
+      this.board.add(tile);if(animate&&!this.blockers.has(k)){
+        const distance=(cell+this.gap)*.72,tx=tile.x,ty=tile.y;
+        if(this.lastDir==='left')tile.x+=distance;if(this.lastDir==='right')tile.x-=distance;
+        if(this.lastDir==='up')tile.y+=distance;if(this.lastDir==='down')tile.y-=distance;
+        tile.setAlpha(.35);this.tweens.add({targets:tile,x:tx,y:ty,alpha:1,duration:165,ease:'Cubic.Out'});
+        if(v){tile.setScale(.94);this.tweens.add({targets:tile,scale:1,duration:130,delay:105,ease:'Back.Out'})}
+      }
     }
     this.movesText.setText(String(this.movesLeft));this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
   }
