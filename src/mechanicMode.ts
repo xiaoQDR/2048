@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 
-const W=1080,H=1920,VERSION='v0.8.2-cell-path';
+const W=1080,H=1920,VERSION='v0.9.0-core-rebuild';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
