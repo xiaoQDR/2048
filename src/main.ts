@@ -115,9 +115,9 @@ class GameScene extends Phaser.Scene{
     this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;this.movesLeft--;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.score);this.collectOrders();this.updateAnts(before);
-    if(this.isComplete()){this.render(true,result.transitions,null,result.mergedCells);this.complete();return}
-    const spawned=this.addRandom();this.render(true,result.transitions,spawned,result.mergedCells);
-    if(this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed()))this.showResult(false,0);
+    if(this.isComplete()){this.render(true,result.transitions,null,result.mergedCells,()=>this.complete());return}
+    const spawned=this.addRandom(),lost=this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed());
+    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(lost)this.showResult(false,0)});
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
@@ -159,7 +159,7 @@ class GameScene extends Phaser.Scene{
     if(this.config.rescueAnts)lines.push(`${this.rescued>=this.config.rescueAnts?'✓':'○'} 放出蚂蚁 ${this.rescued}/${this.config.rescueAnts}`);
     return lines.join('\n');
   }
-  render(animate:boolean,motions:Motion[]=[],spawned:Pos|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[]){
+  render(animate:boolean,motions:Motion[]=[],spawned:Pos|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[],onDone?:()=>void){
     this.board.removeAll(true);
     const rows=this.grid.length,cols=this.grid[0].length;
     const cell=Math.min((this.boardSize-this.gap*(cols+1))/cols,(this.boardSize-this.gap*(rows+1))/rows);
@@ -193,30 +193,25 @@ class GameScene extends Phaser.Scene{
       }
     }
     if(animate&&motions.length){
-      finalPieces.forEach(piece=>piece.setAlpha(0));
-      let remaining=motions.length;
-      const finish=()=>{
-        if(--remaining>0)return;
-        finalPieces.forEach(piece=>{piece.setAlpha(1);piece.setScale(.82);this.tweens.add({targets:piece,scale:1,duration:125,ease:'Back.Out'})});
+      const hidden=new Set(motions.map(m=>key(m.toR,m.toC)));if(spawned)hidden.add(key(spawned.r,spawned.c));
+      hidden.forEach(k=>finalPieces.get(k)?.setAlpha(0));
+      const ghosts:Phaser.GameObjects.Container[]=[];let remaining=0,finished=false;
+      const reveal=()=>{
+        if(finished)return;finished=true;ghosts.forEach(g=>g.destroy());
+        hidden.forEach(k=>finalPieces.get(k)?.setAlpha(1));
+        for(const m of mergedCells){const piece=finalPieces.get(key(m.r,m.c));if(piece){piece.setScale(.62);this.tweens.add({targets:piece,scale:1,duration:145,ease:'Back.Out'})}}
+        if(spawned){const piece=finalPieces.get(key(spawned.r,spawned.c));if(piece){piece.setScale(0);this.tweens.add({targets:piece,scale:1,duration:135,ease:'Back.Out'})}}
+        this.animating=false;onDone?.();
       };
-      const leading=(m:Motion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?cols-1-m.fromC:this.lastDir==='up'?m.fromR:rows-1-m.fromR;
       for(const motion of motions){
-        const from=center(motion.fromR,motion.fromC),ghost=makePiece(motion.value,from.x,from.y);this.board.add(ghost);
-        const path:Array<{x:number;y:number}>=[];let r=motion.fromR,c=motion.fromC;
-        while(r!==motion.toR||c!==motion.toC){
-          if(r<motion.toR)r++;else if(r>motion.toR)r--;else if(c<motion.toC)c++;else if(c>motion.toC)c--;
-          path.push(center(r,c));
-        }
-        if(!path.length){finish();continue}
-        let index=0;
-        const step=()=>{
-          const point=path[index++];this.tweens.add({targets:ghost,x:point.x,y:point.y,duration:82,ease:'Sine.InOut',onComplete:()=>{
-            if(index<path.length)step();else{ghost.destroy();finish()}
-          }});
-        };
-        this.time.delayedCall(leading(motion)*18,step);
+        const from=center(motion.fromR,motion.fromC),to=center(motion.toR,motion.toC),ghost=makePiece(motion.value,from.x,from.y);ghosts.push(ghost);this.board.add(ghost);
+        const distance=Math.abs(motion.toR-motion.fromR)+Math.abs(motion.toC-motion.fromC);
+        if(!distance)continue;remaining++;
+        this.tweens.add({targets:ghost,x:to.x,y:to.y,duration:Math.min(360,75+distance*48),ease:'Sine.Out',onComplete:()=>{if(--remaining===0)reveal()}});
       }
-    }
+      if(!remaining)this.time.delayedCall(90,reveal);
+    }else{this.animating=false;onDone?.()}
+
     this.movesText.setText(String(this.movesLeft));this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
   }
   complete(){
