@@ -102,10 +102,12 @@ class GameScene extends Phaser.Scene{
     for(const [k,a] of this.ants){const [r,c]=parseKey(k);if(!this.grid[r][c]&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k))this.grid[r][c]=2}
     this.render(false);
   }
-  addRandom(){
+  addRandom():Pos|null{
     const spots:Pos[]=[];this.grid.forEach((row,r)=>row.forEach((v,c)=>{
       const k=key(r,c),ant=this.ants.get(k);if(!v&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k)&&!(ant?.revealed&&!ant.rescued))spots.push({r,c});
-    }));if(!spots.length)return;const p=spots[Math.floor(this.random()*spots.length)];this.grid[p.r][p.c]=this.random()<.9?2:4;
+    }));
+    if(!spots.length)return null;
+    const p=spots[Math.floor(this.random()*spots.length)];this.grid[p.r][p.c]=this.random()<.9?2:4;return p;
   }
   snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
