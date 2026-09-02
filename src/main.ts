@@ -2,12 +2,13 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
+import {move2048,hasLegalMove,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.8.2-cell-path';
+const APP_VERSION='v0.9.0-core-rebuild';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
-type Motion={fromR:number;fromC:number;toR:number;toC:number;value:number;merged:boolean};
+type Motion=TileTransition;
 type AntState={revealed:boolean;rescued:boolean};
 type Snapshot={
   grid:number[][];score:number;movesLeft:number;rngState:number;
@@ -22,48 +23,7 @@ const clone=(g:number[][])=>g.map(r=>[...r]);
 const loadProgress=():Progress=>{try{return {...{unlocked:1,stars:{}},...JSON.parse(localStorage.getItem('phaser2048-level-progress')||'{}')}}catch{return {unlocked:1,stars:{}}}};
 const saveProgress=(p:Progress)=>localStorage.setItem('phaser2048-level-progress',JSON.stringify(p));
 
-function collapse(line:number[],size:number){
-  const values=line.filter(Boolean),out:number[]=[];let gained=0;
-  for(let i=0;i<values.length;i++){
-    if(values[i]===values[i+1]){const v=values[i]*2;out.push(v);gained+=v;i++}else out.push(values[i]);
-  }
-  while(out.length<size)out.push(0);return {line:out,gained};
-}
-function moveGrid(grid:number[][],dir:Direction,fixed:Set<string>){
-  const rows=grid.length,cols=grid[0].length,next=clone(grid),motions:Motion[]=[];
-  const horizontal=dir==='left'||dir==='right',reverse=dir==='right'||dir==='down';
-  const lineCount=horizontal?rows:cols,lineLength=horizontal?cols:rows;let gained=0;
-  for(let lineIndex=0;lineIndex<lineCount;lineIndex++){
-    const positions:Array<[number,number]>=Array.from({length:lineLength},(_,i)=>horizontal?[lineIndex,i]:[i,lineIndex]);
-    let start=0;
-    for(let end=0;end<=lineLength;end++){
-      const boundary=end===lineLength||fixed.has(key(...positions[end]));
-      if(!boundary)continue;
-      const segment=positions.slice(start,end),oriented=reverse?[...segment].reverse():segment;
-      const items=oriented.map(([r,c])=>({value:grid[r][c],r,c})).filter(x=>x.value!==0);
-      segment.forEach(([r,c])=>next[r][c]=0);let write=0;
-      for(let i=0;i<items.length;i++){
-        const item=items[i],dest=oriented[write++];
-        if(item.value===items[i+1]?.value){
-          const other=items[++i],result=item.value*2;next[dest[0]][dest[1]]=result;gained+=result;
-          motions.push({fromR:item.r,fromC:item.c,toR:dest[0],toC:dest[1],value:item.value,merged:true});
-          motions.push({fromR:other.r,fromC:other.c,toR:dest[0],toC:dest[1],value:other.value,merged:true});
-        }else{
-          next[dest[0]][dest[1]]=item.value;
-          motions.push({fromR:item.r,fromC:item.c,toR:dest[0],toC:dest[1],value:item.value,merged:false});
-        }
-      }
-      start=end+1;
-    }
-  }
-  return{grid:next,gained,motions,moved:JSON.stringify(grid)!==JSON.stringify(next)};
-}
-function canMove(g:number[][],fixed:Set<string>,blockers:Set<string>){
-  const rows=g.length,cols=g[0].length;
-  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(!fixed.has(key(r,c))&&!g[r][c])return true;
-  for(const d of ['left','right','up','down'] as Direction[])if(moveGrid(g,d,fixed).moved)return true;
-  return false;
-}
+
 function label(scene:Phaser.Scene,x:number,y:number,text:string,size:number,color='#5f574d'){
   return scene.add.text(x,y,text,{fontFamily:'Arial, sans-serif',fontSize:size+'px',fontStyle:'bold',color,align:'center'}).setOrigin(.5);
 }
@@ -96,7 +56,7 @@ class GameScene extends Phaser.Scene{
   config!:LevelConfig;grid:number[][]=[];score=0;movesLeft=0;rngState=1;previous:Snapshot|null=null;
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
-  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';
+  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=20;
   constructor(){super('game')}
   preload(){
@@ -121,7 +81,7 @@ class GameScene extends Phaser.Scene{
     });
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.start=new Phaser.Math.Vector2(p.x,p.y));
     this.input.on('pointerup',(p:Phaser.Input.Pointer)=>{
-      if(!this.start||this.overlay)return;const dx=p.x-this.start.x,dy=p.y-this.start.y;this.start=undefined;if(Math.max(Math.abs(dx),Math.abs(dy))<45)return;
+      if(!this.start||this.overlay||this.animating)return;const dx=p.x-this.start.x,dy=p.y-this.start.y;this.start=undefined;if(Math.max(Math.abs(dx),Math.abs(dy))<45)return;
       this.move(Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up'));
     });this.restart();
   }
@@ -149,14 +109,15 @@ class GameScene extends Phaser.Scene{
   }
   snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
-    if(this.overlay)return;const before=clone(this.grid),result=moveGrid(this.grid,dir,this.fixed());if(!result.moved)return;
+    if(this.overlay||this.animating)return;const before=clone(this.grid),result=move2048(this.grid,dir,this.fixed());if(!result.moved)return;
+    this.animating=true;
     this.lastDir=dir;
-    this.previous=this.snapshot();this.grid=result.grid;this.score+=result.gained;this.movesLeft--;
+    this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;this.movesLeft--;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
-    this.thawIce(before,result.gained);this.collectOrders();this.updateAnts(before);
-    if(this.isComplete()){this.render(true,result.motions);this.complete();return}
-    this.addRandom();this.render(true,result.motions);
-    if(this.movesLeft<=0||!canMove(this.grid,this.fixed(),this.blockers))this.showResult(false,0);
+    this.thawIce(before,result.score);this.collectOrders();this.updateAnts(before);
+    if(this.isComplete()){this.render(true,result.transitions,null,result.mergedCells);this.complete();return}
+    const spawned=this.addRandom();this.render(true,result.transitions,spawned,result.mergedCells);
+    if(this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed()))this.showResult(false,0);
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
@@ -198,7 +159,7 @@ class GameScene extends Phaser.Scene{
     if(this.config.rescueAnts)lines.push(`${this.rescued>=this.config.rescueAnts?'✓':'○'} 放出蚂蚁 ${this.rescued}/${this.config.rescueAnts}`);
     return lines.join('\n');
   }
-  render(animate:boolean,motions:Motion[]=[]){
+  render(animate:boolean,motions:Motion[]=[],spawned:Pos|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[]){
     this.board.removeAll(true);
     const rows=this.grid.length,cols=this.grid[0].length;
     const cell=Math.min((this.boardSize-this.gap*(cols+1))/cols,(this.boardSize-this.gap*(rows+1))/rows);
