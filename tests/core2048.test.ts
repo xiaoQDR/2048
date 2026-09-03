@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {chooseMotherCell,move2048} from '../src/core2048';
 import {LEVELS} from '../src/levels';
 import {MECHANIC_LEVELS} from '../src/mechanicLevels';
+import {OBSTACLE_CATEGORIES,OBSTACLE_LEVELS} from '../src/obstacleLevels';
 
 const row=(v:number[])=>[v];
 test('three equal tiles merge only the leading pair',()=>{
@@ -50,4 +51,9 @@ test('all regular and mechanic levels define a valid time limit',()=>{
   assert.equal(LEVELS.length,50);assert.equal(MECHANIC_LEVELS.length,50);
   assert.ok(LEVELS.every(level=>Number.isInteger(level.timeLimit)&&level.timeLimit>=40));
   assert.ok(MECHANIC_LEVELS.every(level=>Number.isInteger(level.timeLimit)&&level.timeLimit>=40));
+});
+test('obstacle lab contains four categories and sixteen unique obstacles',()=>{
+  assert.equal(OBSTACLE_CATEGORIES.length,4);assert.equal(OBSTACLE_LEVELS.length,16);
+  assert.equal(new Set(OBSTACLE_LEVELS.map(level=>level.id)).size,16);
+  for(const category of OBSTACLE_CATEGORIES)assert.equal(OBSTACLE_LEVELS.filter(level=>level.category===category.id).length,4);
 });

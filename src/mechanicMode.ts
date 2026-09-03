@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 import {chooseMotherCell} from './core2048';
 
-const W=1080,H=1920,VERSION='v0.11.0-timed-levels';
+const W=1080,H=1920,VERSION='v0.12.0-obstacle-lab';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 type LabSpawn={r:number;c:number;value:number};
@@ -66,8 +66,9 @@ export class HomeScene extends Phaser.Scene{
   constructor(){super('home')}
   create(){
     this.cameras.main.setBackgroundColor('#f6f1e8');text(this,W/2,260,'2048 关卡实验室',82);text(this,W/2,360,'选择要进入的游戏模式',32,'#887e72');
-    const a=this.add.rectangle(W/2,650,760,230,0x826f5d).setInteractive({useHandCursor:true});text(this,W/2,620,'机制测试关卡',48,'#fff');text(this,W/2,690,'50种机制 · 每种一关',29,'#eadfd2');a.on('pointerup',()=>this.scene.start('mechanic-select'));
-    const b=this.add.rectangle(W/2,970,760,230,0xb17a4b).setInteractive({useHandCursor:true});text(this,W/2,940,'现有关卡模式',48,'#fff');text(this,W/2,1010,'保留原来的50关进度',29,'#f7e5d4');b.on('pointerup',()=>this.scene.start('levels'));
+    const a=this.add.rectangle(W/2,580,760,190,0x826f5d).setInteractive({useHandCursor:true});text(this,W/2,555,'机制测试关卡',44,'#fff');text(this,W/2,620,'50种机制 · 每种一关',27,'#eadfd2');a.on('pointerup',()=>this.scene.start('mechanic-select'));
+    const b=this.add.rectangle(W/2,840,760,190,0x647f88).setInteractive({useHandCursor:true});text(this,W/2,815,'障碍物实验室',44,'#fff');text(this,W/2,880,'4类障碍 · 16个可操作测试关',27,'#e0edf0');b.on('pointerup',()=>this.scene.start('obstacle-select'));
+    const c=this.add.rectangle(W/2,1100,760,190,0xb17a4b).setInteractive({useHandCursor:true});text(this,W/2,1075,'现有关卡模式',44,'#fff');text(this,W/2,1140,'保留原来的50关进度',27,'#f7e5d4');c.on('pointerup',()=>this.scene.start('levels'));
     text(this,W/2,1810,VERSION,23,'#aaa095');
   }
 }

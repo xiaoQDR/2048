@@ -2,9 +2,10 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
+import {ObstacleSelectScene,ObstacleTestScene} from './obstacleMode';
 import {move2048,hasLegalMove,chooseMotherCell,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.11.0-timed-levels';
+const APP_VERSION='v0.12.0-obstacle-lab';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -263,4 +264,4 @@ class GameScene extends Phaser.Scene{
   hideOverlay(){this.overlay?.destroy();this.overlay=undefined}
 }
 
-new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#f6f1e8',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:W,height:H},render:{antialias:true},scene:[HomeScene,MechanicSelectScene,MechanicTestScene,LevelScene,GameScene],input:{activePointers:2}});
+new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#f6f1e8',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:W,height:H},render:{antialias:true},scene:[HomeScene,MechanicSelectScene,MechanicTestScene,ObstacleSelectScene,ObstacleTestScene,LevelScene,GameScene],input:{activePointers:2}});
