@@ -3,9 +3,9 @@ import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {ObstacleSelectScene,ObstacleTestScene} from './obstacleMode';
-import {move2048,hasLegalMove,chooseMotherCell,type TileTransition} from './core2048';
+import {move2048,hasLegalMove,chooseMotherCell,doubleMergedValues,advanceCombo,comboTier,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.12.1-svg-textures';
+const APP_VERSION='v0.13.0-combo';
 const SVG_CONFIG={width:256,height:256};
 const svgAsset=(name:string)=>`./assets/${name}.svg?v=0.12.1`;
 const TEST_UNLOCK_ALL=true;
@@ -15,7 +15,7 @@ type Motion=TileTransition;
 type SpawnedTile=Pos&{value:number};
 type AntState={revealed:boolean;rescued:boolean};
 type Snapshot={
-  grid:number[][];score:number;rngState:number;
+  grid:number[][];score:number;combo:number;rngState:number;
   ice:[string,number][];orders:number[];ants:[string,AntState][];rescued:number;targetDone:boolean;
 };
 interface Progress{unlocked:number;stars:Record<number,number>}
@@ -57,10 +57,10 @@ class LevelScene extends Phaser.Scene{
 }
 
 class GameScene extends Phaser.Scene{
-  config!:LevelConfig;grid:number[][]=[];score=0;timeLeft=0;rngState=1;previous:Snapshot|null=null;countdown?:Phaser.Time.TimerEvent;
+  config!:LevelConfig;grid:number[][]=[];score=0;combo=0;timeLeft=0;rngState=1;previous:Snapshot|null=null;countdown?:Phaser.Time.TimerEvent;
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;timeText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
-  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;mother:Pos={r:0,c:0};
+  objectiveText!:Phaser.GameObjects.Text;comboText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;mother:Pos={r:0,c:0};
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=0;
   constructor(){super('game')}
   preload(){
@@ -78,6 +78,7 @@ class GameScene extends Phaser.Scene{
     this.add.text(W/2,150,this.config.title,{fontSize:'27px',color:'#8b8175'}).setOrigin(.5);
     this.card(90,235,280,'机制',this.mechanicName());this.card(400,235,280,'剩余时间','00:00',true);this.card(710,235,280,'分数','0',false,true);
     button(this,90,420,260,95,'↶ 撤销',()=>this.undo());button(this,730,420,260,95,'重新开始',()=>this.restart());
+    this.comboText=this.add.text(W/2,535,'连续合并可触发三连击 / 四连击',{fontFamily:'Arial,sans-serif',fontSize:'27px',fontStyle:'bold',color:'#8b8175'}).setOrigin(.5);
     this.board=this.add.container();this.objectiveText=this.add.text(W/2,1560,'',{fontSize:'31px',fontStyle:'bold',color:'#6f655a',align:'center',lineSpacing:12,wordWrap:{width:900}}).setOrigin(.5,0);
     this.input.keyboard?.on('keydown',(e:KeyboardEvent)=>{
       const m:Record<string,Direction>={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',a:'left',d:'right',w:'up',s:'down'};
@@ -98,7 +99,7 @@ class GameScene extends Phaser.Scene{
   fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys(),key(this.mother.r,this.mother.c)])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
-    this.countdown?.remove(false);this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.timeLeft=this.config.timeLimit;this.rngState=this.config.seed;this.previous=null;
+    this.countdown?.remove(false);this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.combo=0;this.timeLeft=this.config.timeLimit;this.rngState=this.config.seed;this.previous=null;
     this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.voids=new Set((this.config.voids||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
     for(const p of this.config.ice||[]){this.grid[p.r][p.c]=p.value;this.ice.set(key(p.r,p.c),p.layers)}
     for(const p of this.config.ants||[])this.ants.set(key(p.r,p.c),{revealed:false,rescued:false});
@@ -127,16 +128,18 @@ class GameScene extends Phaser.Scene{
     if(!spots.length)return null;
     const p=spots[Math.floor(this.random()*spots.length)],value=this.random()<.9?2:4;this.grid[p.r][p.c]=value;return {...p,value};
   }
-  snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
+  snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,combo:this.combo,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
-    if(this.overlay||this.animating||this.timeLeft<=0)return;const before=clone(this.grid),result=move2048(this.grid,dir,this.fixed());if(!result.moved)return;
+    if(this.overlay||this.animating||this.timeLeft<=0)return;const before=clone(this.grid),baseResult=move2048(this.grid,dir,this.fixed());if(!baseResult.moved)return;
     this.animating=true;
     this.lastDir=dir;
-    this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;
+    this.previous=this.snapshot();this.combo=advanceCombo(this.combo,baseResult.mergedCells.length>0);
+    const tier=comboTier(this.combo),result=tier?doubleMergedValues(baseResult):baseResult;
+    this.grid=result.grid;this.score+=result.score;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.score);this.collectOrders();this.updateAnts(before);
     const spawned=this.addRandom(),complete=this.isComplete(),lost=!hasLegalMove(this.grid,this.fixed());
-    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(this.overlay)return;if(complete)this.complete();else if(lost)this.showResult(false,0)});
+    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(this.overlay)return;if(complete)this.complete();else if(lost)this.showResult(false,0)});this.showCombo(tier);
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
@@ -167,7 +170,7 @@ class GameScene extends Phaser.Scene{
     return targetOk&&ordersOk&&iceOk&&antsOk;
   }
   undo(){
-    if(!this.previous||this.overlay)return;const s=this.previous;this.grid=clone(s.grid);this.score=s.score;this.rngState=s.rngState;
+    if(!this.previous||this.overlay)return;const s=this.previous;this.grid=clone(s.grid);this.score=s.score;this.combo=s.combo;this.rngState=s.rngState;
     this.ice=new Map(s.ice);this.orders=[...s.orders];this.ants=new Map(s.ants.map(([k,v])=>[k,{...v}]));this.rescued=s.rescued;this.targetDone=s.targetDone;this.previous=null;this.render(true);
   }
   objectiveLines(){
@@ -177,6 +180,15 @@ class GameScene extends Phaser.Scene{
     if(this.config.clearIce)lines.push(`${!this.ice.size?'✓':'○'} 清除全部冰块（剩余 ${this.ice.size}）`);
     if(this.config.rescueAnts)lines.push(`${this.rescued>=this.config.rescueAnts?'✓':'○'} 放出蚂蚁 ${this.rescued}/${this.config.rescueAnts}`);
     return lines.join('\n');
+  }
+  updateComboText(){
+    const copy=this.combo>=4?'四连击 · 合并数字翻倍':this.combo===3?'三连击 · 合并数字翻倍':this.combo?`连击 ${this.combo}/3`:'连续合并可触发三连击 / 四连击';
+    this.comboText?.setText(copy).setColor(this.combo>=3?'#d06045':'#8b8175').setAlpha(1).setScale(1);
+  }
+  showCombo(tier:number){
+    this.updateComboText();if(!tier)return;
+    const burst=this.add.text(W/2,535,tier===4?'四连击！数字翻倍':'三连击！数字翻倍',{fontFamily:'Arial Black',fontSize:'42px',color:tier===4?'#b74735':'#df6b48',stroke:'#fff6e9',strokeThickness:8}).setOrigin(.5).setDepth(25);
+    this.comboText.setAlpha(0);this.tweens.add({targets:burst,y:490,alpha:0,duration:700,ease:'Cubic.Out',onComplete:()=>{burst.destroy();this.comboText.setAlpha(1)}});
   }
   render(animate:boolean,motions:Motion[]=[],spawned:SpawnedTile|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[],onDone?:()=>void){
     this.board.removeAll(true);
@@ -250,7 +262,7 @@ class GameScene extends Phaser.Scene{
       if(!remaining)this.time.delayedCall(90,reveal);
     }else{this.animating=false;onDone?.()}
 
-    this.updateTimeText();this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
+    this.updateTimeText();this.updateComboText();this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
   }
   complete(){
     const ratio=this.timeLeft/this.config.timeLimit,stars=ratio>=.45?3:ratio>=.2?2:1,p=loadProgress();p.unlocked=Math.max(p.unlocked,Math.min(50,this.config.id+1));p.stars[this.config.id]=Math.max(p.stars[this.config.id]||0,stars);saveProgress(p);this.showResult(true,stars);

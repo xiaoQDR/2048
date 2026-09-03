@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chooseMotherCell,move2048} from '../src/core2048';
+import {advanceCombo,chooseMotherCell,comboTier,doubleMergedValues,move2048} from '../src/core2048';
 import {LEVELS} from '../src/levels';
 import {MECHANIC_LEVELS} from '../src/mechanicLevels';
 import {OBSTACLE_CATEGORIES,OBSTACLE_LEVELS} from '../src/obstacleLevels';
@@ -36,6 +36,21 @@ test('vertical traversal uses the leading edge first',()=>{
 });
 test('merge score equals the created tile values',()=>{
   assert.equal(move2048(row([2,2,4,4]),'left').score,12);
+});
+test('combo upgrade doubles every merged result and scores the final values',()=>{
+  const result=doubleMergedValues(move2048(row([2,2,4,4]),'left'));
+  assert.deepEqual(result.grid,[[8,16,0,0]]);
+  assert.deepEqual(result.mergedCells.map(cell=>cell.value),[8,16]);
+  assert.equal(result.score,24);
+});
+test('combo reaches three and four, caps at four, and breaks on a non-merge move',()=>{
+  let combo=0;
+  combo=advanceCombo(combo,true);assert.equal(comboTier(combo),0);
+  combo=advanceCombo(combo,true);assert.equal(comboTier(combo),0);
+  combo=advanceCombo(combo,true);assert.equal(comboTier(combo),3);
+  combo=advanceCombo(combo,true);assert.equal(comboTier(combo),4);
+  combo=advanceCombo(combo,true);assert.equal(combo,4);assert.equal(comboTier(combo),4);
+  combo=advanceCombo(combo,false);assert.equal(combo,0);assert.equal(comboTier(combo),0);
 });
 test('mother tile randomly chooses from available board cells',()=>{
   const unavailable=new Set(['0,0']);

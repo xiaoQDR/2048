@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {chooseMotherCell,move2048,type MoveDirection,type TileTransition} from './core2048';
 import {OBSTACLE_CATEGORIES,OBSTACLE_LEVELS,getObstacleLevel,type ObstacleLevel} from './obstacleLevels';
 
-const W=1080,H=1920,VERSION='v0.12.1-svg-textures',K=(r:number,c:number)=>r+','+c,SVG_CONFIG={width:256,height:256};
+const W=1080,H=1920,VERSION='v0.13.0-combo',K=(r:number,c:number)=>r+','+c,SVG_CONFIG={width:256,height:256};
 const COLORS:Record<number,number>={2:0xeee4da,4:0xe6d2b5,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xe84a35,128:0xedcf72,256:0xe8bd48,512:0xd99b32,1024:0xc97932,2048:0xb85d2c};
 const CATEGORY_COLORS={permanent:0x64727c,destructible:0xa66f3e,attached:0x5595a5,dynamic:0x6e8d54};
 type Spawn={r:number;c:number;value:number};

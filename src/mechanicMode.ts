@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 import {chooseMotherCell} from './core2048';
 
-const W=1080,H=1920,VERSION='v0.12.1-svg-textures',SVG_CONFIG={width:256,height:256};
+const W=1080,H=1920,VERSION='v0.13.0-combo',SVG_CONFIG={width:256,height:256};
 const svgAsset=(name:string)=>`./assets/${name}.svg?v=0.12.1`;
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};

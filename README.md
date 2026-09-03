@@ -1,6 +1,6 @@
 # Phaser Mobile 2048
 
-当前版本：v0.12.1-svg-textures
+当前版本：v0.13.0-combo
 
 一款使用 Phaser 3 + TypeScript + Vite 开发的竖屏手游版 2048。
 

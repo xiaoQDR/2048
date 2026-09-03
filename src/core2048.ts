@@ -66,6 +66,27 @@ export function move2048(values:number[][],direction:MoveDirection,blocked:Set<s
   return{grid,score,moved,transitions,mergedCells};
 }
 
+export function doubleMergedValues(outcome:MoveOutcome):MoveOutcome{
+  if(!outcome.mergedCells.length)return outcome;
+  const grid=copy(outcome.grid);
+  let bonusScore=0;
+  const mergedCells=outcome.mergedCells.map(cell=>{
+    const value=cell.value*2;
+    grid[cell.r][cell.c]=value;
+    bonusScore+=cell.value;
+    return {...cell,value};
+  });
+  return {...outcome,grid,score:outcome.score+bonusScore,mergedCells};
+}
+
+export function advanceCombo(current:number,merged:boolean){
+  return merged?Math.min(4,current+1):0;
+}
+
+export function comboTier(combo:number):0|3|4{
+  return combo>=4?4:combo===3?3:0;
+}
+
 export function hasLegalMove(values:number[][],blocked:Set<string>=new Set()){
   return(['left','right','up','down'] as MoveDirection[]).some(d=>move2048(values,d,blocked).moved);
 }
