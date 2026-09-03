@@ -1,6 +1,6 @@
 # Phaser Mobile 2048
 
-当前版本：v0.12.0-obstacle-lab
+当前版本：v0.12.1-svg-textures
 
 一款使用 Phaser 3 + TypeScript + Vite 开发的竖屏手游版 2048。
 

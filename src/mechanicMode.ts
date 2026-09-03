@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 import {chooseMotherCell} from './core2048';
 
-const W=1080,H=1920,VERSION='v0.12.0-obstacle-lab';
+const W=1080,H=1920,VERSION='v0.12.1-svg-textures',SVG_CONFIG={width:256,height:256};
+const svgAsset=(name:string)=>`./assets/${name}.svg?v=0.12.1`;
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 type LabSpawn={r:number;c:number;value:number};
@@ -92,14 +93,14 @@ export class MechanicTestScene extends Phaser.Scene{
   board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';animating=false;mother={r:0,c:0};
   constructor(){super('mechanic-test')}
   preload(){
-    this.load.svg('lab-stump','./assets/stump.svg');
-    this.load.svg('lab-ice','./assets/ice.svg');
-    this.load.svg('lab-ant','./assets/ant.svg');
-    this.load.svg('lab-portal','./assets/portal.svg');
-    this.load.svg('lab-bomb','./assets/bomb.svg');
-    this.load.svg('lab-stone','./assets/stone.svg');
-    this.load.svg('lab-chain','./assets/chain.svg');
-    this.load.svg('lab-slime','./assets/slime.svg');
+    this.load.svg('lab-stump',svgAsset('stump'),SVG_CONFIG);
+    this.load.svg('lab-ice',svgAsset('ice'),SVG_CONFIG);
+    this.load.svg('lab-ant',svgAsset('ant'),SVG_CONFIG);
+    this.load.svg('lab-portal',svgAsset('portal'),SVG_CONFIG);
+    this.load.svg('lab-bomb',svgAsset('bomb'),SVG_CONFIG);
+    this.load.svg('lab-stone',svgAsset('stone'),SVG_CONFIG);
+    this.load.svg('lab-chain',svgAsset('chain'),SVG_CONFIG);
+    this.load.svg('lab-slime',svgAsset('slime'),SVG_CONFIG);
   }
   init(d:{id?:number}){this.level=getMechanicLevel(d.id||1)}
   create(){

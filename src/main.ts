@@ -5,7 +5,9 @@ import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {ObstacleSelectScene,ObstacleTestScene} from './obstacleMode';
 import {move2048,hasLegalMove,chooseMotherCell,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.12.0-obstacle-lab';
+const APP_VERSION='v0.12.1-svg-textures';
+const SVG_CONFIG={width:256,height:256};
+const svgAsset=(name:string)=>`./assets/${name}.svg?v=0.12.1`;
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -62,9 +64,9 @@ class GameScene extends Phaser.Scene{
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=0;
   constructor(){super('game')}
   preload(){
-    this.load.svg('art-stump','./assets/stump.svg');
-    this.load.svg('art-ice','./assets/ice.svg');
-    this.load.svg('art-ant','./assets/ant.svg');
+    this.load.svg('art-stump',svgAsset('stump'),SVG_CONFIG);
+    this.load.svg('art-ice',svgAsset('ice'),SVG_CONFIG);
+    this.load.svg('art-ant',svgAsset('ant'),SVG_CONFIG);
   }
   init(data:{levelId?:number}){this.config=getLevel(data.levelId||1)}
   create(){

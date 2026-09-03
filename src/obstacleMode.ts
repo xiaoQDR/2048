@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {chooseMotherCell,move2048,type MoveDirection,type TileTransition} from './core2048';
 import {OBSTACLE_CATEGORIES,OBSTACLE_LEVELS,getObstacleLevel,type ObstacleLevel} from './obstacleLevels';
 
-const W=1080,H=1920,VERSION='v0.12.0-obstacle-lab',K=(r:number,c:number)=>r+','+c;
+const W=1080,H=1920,VERSION='v0.12.1-svg-textures',K=(r:number,c:number)=>r+','+c,SVG_CONFIG={width:256,height:256};
 const COLORS:Record<number,number>={2:0xeee4da,4:0xe6d2b5,8:0xf2b179,16:0xf59563,32:0xf67c5f,64:0xe84a35,128:0xedcf72,256:0xe8bd48,512:0xd99b32,1024:0xc97932,2048:0xb85d2c};
 const CATEGORY_COLORS={permanent:0x64727c,destructible:0xa66f3e,attached:0x5595a5,dynamic:0x6e8d54};
 type Spawn={r:number;c:number;value:number};
@@ -120,5 +120,5 @@ export class ObstacleTestScene extends Phaser.Scene{
 function preloadObstacleAssets(scene:Phaser.Scene){
   const assets:Record<string,string>={
     'art-stump':'stump.svg','art-ice':'ice.svg','art-chain':'chain.svg','art-slime':'slime.svg','art-portal':'portal.svg','obs-wall':'wall.svg','obs-void':'void.svg','obs-number-gate':'number-gate.svg','obs-switch-gate':'switch-gate.svg','obs-crate':'crate.svg','obs-cracked-rock':'cracked-rock.svg','obs-barrel':'barrel.svg','obs-vine':'vine.svg','obs-boulder':'boulder.svg','obs-thorn':'thorn.svg','obs-conveyor':'conveyor.svg'
-  };for(const[key,file]of Object.entries(assets))scene.load.svg(key,'./assets/'+file);
+  };for(const[key,file]of Object.entries(assets))scene.load.svg(key,`./assets/${file}?v=0.12.1`,SVG_CONFIG);
 }
