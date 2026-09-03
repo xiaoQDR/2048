@@ -4,7 +4,7 @@ import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
 import {move2048,hasLegalMove,chooseMotherCell,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.10.0-mother-spawn';
+const APP_VERSION='v0.11.0-timed-levels';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
@@ -12,7 +12,7 @@ type Motion=TileTransition;
 type SpawnedTile=Pos&{value:number};
 type AntState={revealed:boolean;rescued:boolean};
 type Snapshot={
-  grid:number[][];score:number;movesLeft:number;rngState:number;
+  grid:number[][];score:number;rngState:number;
   ice:[string,number][];orders:number[];ants:[string,AntState][];rescued:number;targetDone:boolean;
 };
 interface Progress{unlocked:number;stars:Record<number,number>}
@@ -54,9 +54,9 @@ class LevelScene extends Phaser.Scene{
 }
 
 class GameScene extends Phaser.Scene{
-  config!:LevelConfig;grid:number[][]=[];score=0;movesLeft=0;rngState=1;previous:Snapshot|null=null;
+  config!:LevelConfig;grid:number[][]=[];score=0;timeLeft=0;rngState=1;previous:Snapshot|null=null;countdown?:Phaser.Time.TimerEvent;
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
-  rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
+  rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;timeText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
   objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;mother:Pos={r:0,c:0};
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=0;
   constructor(){super('game')}
@@ -73,7 +73,7 @@ class GameScene extends Phaser.Scene{
     button(this,775,75,150,82,'上一关',()=>this.scene.restart({levelId:this.config.id-1}),this.config.id>1);
     button(this,950,75,150,82,'下一关',()=>this.scene.restart({levelId:this.config.id+1}),this.config.id<50);
     this.add.text(W/2,150,this.config.title,{fontSize:'27px',color:'#8b8175'}).setOrigin(.5);
-    this.card(90,235,280,'机制',this.mechanicName());this.card(400,235,280,'剩余步数','0',true);this.card(710,235,280,'分数','0',false,true);
+    this.card(90,235,280,'机制',this.mechanicName());this.card(400,235,280,'剩余时间','00:00',true);this.card(710,235,280,'分数','0',false,true);
     button(this,90,420,260,95,'↶ 撤销',()=>this.undo());button(this,730,420,260,95,'重新开始',()=>this.restart());
     this.board=this.add.container();this.objectiveText=this.add.text(W/2,1560,'',{fontSize:'31px',fontStyle:'bold',color:'#6f655a',align:'center',lineSpacing:12,wordWrap:{width:900}}).setOrigin(.5,0);
     this.input.keyboard?.on('keydown',(e:KeyboardEvent)=>{
@@ -86,23 +86,36 @@ class GameScene extends Phaser.Scene{
       this.move(Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up'));
     });this.restart();
   }
-  card(x:number,y:number,w:number,title:string,value:string,moves=false,score=false){
+  card(x:number,y:number,w:number,title:string,value:string,timer=false,score=false){
     this.add.rectangle(x,y,w,135,0x938575).setOrigin(0);this.add.text(x+w/2,y+22,title,{fontSize:'26px',fontStyle:'bold',color:'#ded5c9'}).setOrigin(.5,0);
     const t=this.add.text(x+w/2,y+61,value,{fontSize:value.length>5?'29px':'42px',fontStyle:'bold',color:'#fff'}).setOrigin(.5,0);
-    if(moves)this.movesText=t;if(score)this.scoreText=t;
+    if(timer)this.timeText=t;if(score)this.scoreText=t;
   }
   mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return (this.config.boardCols||this.config.boardSize)+'×'+(this.config.boardRows||this.config.boardSize)+' '+name}
   fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys(),key(this.mother.r,this.mother.c)])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
-    this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.movesLeft=this.config.moveLimit;this.rngState=this.config.seed;this.previous=null;
+    this.countdown?.remove(false);this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.timeLeft=this.config.timeLimit;this.rngState=this.config.seed;this.previous=null;
     this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.voids=new Set((this.config.voids||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
     for(const p of this.config.ice||[]){this.grid[p.r][p.c]=p.value;this.ice.set(key(p.r,p.c),p.layers)}
     for(const p of this.config.ants||[])this.ants.set(key(p.r,p.c),{revealed:false,rescued:false});
     this.mother=chooseMotherCell(rows,cols,new Set([...this.blockers,...this.voids,...this.ice.keys(),...this.ants.keys()]));
     this.addRandom();this.addRandom();
     for(const [k,a] of this.ants){const [r,c]=parseKey(k);if(!this.grid[r][c]&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k))this.grid[r][c]=2}
-    this.render(false);
+    this.render(false);this.startCountdown();
+  }
+  startCountdown(){
+    this.updateTimeText();
+    this.countdown=this.time.addEvent({delay:1000,loop:true,callback:()=>{
+      if(this.overlay)return;
+      this.timeLeft=Math.max(0,this.timeLeft-1);this.updateTimeText();
+      if(this.timeLeft===0){this.countdown?.remove(false);this.countdown=undefined;this.showResult(false,0)}
+    }});
+  }
+  updateTimeText(){
+    const minutes=Math.floor(this.timeLeft/60),seconds=this.timeLeft%60;
+    this.timeText?.setText(`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`);
+    this.timeText?.setColor(this.timeLeft<=10?'#ffb0a6':'#fff');
   }
   addRandom():SpawnedTile|null{
     const spots:Pos[]=[];this.grid.forEach((row,r)=>row.forEach((v,c)=>{
@@ -111,16 +124,16 @@ class GameScene extends Phaser.Scene{
     if(!spots.length)return null;
     const p=spots[Math.floor(this.random()*spots.length)],value=this.random()<.9?2:4;this.grid[p.r][p.c]=value;return {...p,value};
   }
-  snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
+  snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
-    if(this.overlay||this.animating)return;const before=clone(this.grid),result=move2048(this.grid,dir,this.fixed());if(!result.moved)return;
+    if(this.overlay||this.animating||this.timeLeft<=0)return;const before=clone(this.grid),result=move2048(this.grid,dir,this.fixed());if(!result.moved)return;
     this.animating=true;
     this.lastDir=dir;
-    this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;this.movesLeft--;
+    this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.score);this.collectOrders();this.updateAnts(before);
-    const spawned=this.addRandom(),complete=this.isComplete(),lost=this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed());
-    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(complete)this.complete();else if(lost)this.showResult(false,0)});
+    const spawned=this.addRandom(),complete=this.isComplete(),lost=!hasLegalMove(this.grid,this.fixed());
+    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(this.overlay)return;if(complete)this.complete();else if(lost)this.showResult(false,0)});
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
@@ -151,7 +164,7 @@ class GameScene extends Phaser.Scene{
     return targetOk&&ordersOk&&iceOk&&antsOk;
   }
   undo(){
-    if(!this.previous||this.overlay)return;const s=this.previous;this.grid=clone(s.grid);this.score=s.score;this.movesLeft=s.movesLeft;this.rngState=s.rngState;
+    if(!this.previous||this.overlay)return;const s=this.previous;this.grid=clone(s.grid);this.score=s.score;this.rngState=s.rngState;
     this.ice=new Map(s.ice);this.orders=[...s.orders];this.ants=new Map(s.ants.map(([k,v])=>[k,{...v}]));this.rescued=s.rescued;this.targetDone=s.targetDone;this.previous=null;this.render(true);
   }
   objectiveLines(){
@@ -234,12 +247,13 @@ class GameScene extends Phaser.Scene{
       if(!remaining)this.time.delayedCall(90,reveal);
     }else{this.animating=false;onDone?.()}
 
-    this.movesText.setText(String(this.movesLeft));this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
+    this.updateTimeText();this.scoreText.setText(String(this.score));this.objectiveText.setText(this.objectiveLines());
   }
   complete(){
-    const ratio=this.movesLeft/this.config.moveLimit,stars=ratio>=.45?3:ratio>=.2?2:1,p=loadProgress();p.unlocked=Math.max(p.unlocked,Math.min(50,this.config.id+1));p.stars[this.config.id]=Math.max(p.stars[this.config.id]||0,stars);saveProgress(p);this.showResult(true,stars);
+    const ratio=this.timeLeft/this.config.timeLimit,stars=ratio>=.45?3:ratio>=.2?2:1,p=loadProgress();p.unlocked=Math.max(p.unlocked,Math.min(50,this.config.id+1));p.stars[this.config.id]=Math.max(p.stars[this.config.id]||0,stars);saveProgress(p);this.showResult(true,stars);
   }
   showResult(win:boolean,stars:number){
+    if(this.overlay)return;this.countdown?.remove(false);this.countdown=undefined;
     const o=this.add.container().setDepth(30);o.add(this.add.rectangle(0,0,W,H,0xf6f1e8,.94).setOrigin(0).setInteractive());
     const title=label(this,W/2,650,win?'过关！':'挑战失败',72);o.add(title);
     const detail=this.add.text(W/2,755,win?'★'.repeat(stars)+'☆'.repeat(3-stars):'目标还没有全部完成',{fontSize:win?'82px':'32px',color:win?'#f0b83f':'#887e72'}).setOrigin(.5);o.add(detail);

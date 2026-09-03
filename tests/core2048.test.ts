@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chooseMotherCell,move2048} from '../src/core2048';
+import {LEVELS} from '../src/levels';
+import {MECHANIC_LEVELS} from '../src/mechanicLevels';
 
 const row=(v:number[])=>[v];
 test('three equal tiles merge only the leading pair',()=>{
@@ -34,12 +36,18 @@ test('vertical traversal uses the leading edge first',()=>{
 test('merge score equals the created tile values',()=>{
   assert.equal(move2048(row([2,2,4,4]),'left').score,12);
 });
-test('mother tile uses the nearest available center cell',()=>{
-  assert.deepEqual(chooseMotherCell(5,5),{r:2,c:2});
-  assert.deepEqual(chooseMotherCell(5,5,new Set(['2,2','1,2'])),{r:2,c:1});
+test('mother tile randomly chooses from available board cells',()=>{
+  const unavailable=new Set(['0,0']);
+  assert.deepEqual(chooseMotherCell(5,5,unavailable,()=>0),{r:0,c:1});
+  assert.deepEqual(chooseMotherCell(5,5,unavailable,()=>.999999),{r:4,c:4});
 });
 test('mother tile blocks movement like a fixed board cell',()=>{
   const mother={r:0,c:2};
   const blocked=new Set([`${mother.r},${mother.c}`]);
   assert.deepEqual(move2048([[2,0,0,4,0]],'right',blocked).grid,[[0,2,0,0,4]]);
+});
+test('all regular and mechanic levels define a valid time limit',()=>{
+  assert.equal(LEVELS.length,50);assert.equal(MECHANIC_LEVELS.length,50);
+  assert.ok(LEVELS.every(level=>Number.isInteger(level.timeLimit)&&level.timeLimit>=40));
+  assert.ok(MECHANIC_LEVELS.every(level=>Number.isInteger(level.timeLimit)&&level.timeLimit>=40));
 });

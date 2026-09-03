@@ -4,7 +4,7 @@ export interface MechanicLevel{
   category:string;
   description:string;
   target:number;
-  moves:number;
+  timeLimit:number;
 }
 
 const rows:Array<[string,string,string]>=[
@@ -61,6 +61,6 @@ const rows:Array<[string,string,string]>=[
 ];
 
 export const MECHANIC_LEVELS:MechanicLevel[]=rows.map(([title,category,description],i)=>({
-  id:i+1,title,category,description,target:i<18?32:i<30?16:i<40?32:64,moves:20+(i%5)*3
+  id:i+1,title,category,description,target:i<18?32:i<30?16:i<40?32:64,timeLimit:100+(i%5)*15
 }));
 export const getMechanicLevel=(id:number)=>MECHANIC_LEVELS[Math.max(0,Math.min(49,id-1))];

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
 import {chooseMotherCell} from './core2048';
 
-const W=1080,H=1920,VERSION='v0.10.0-mother-spawn';
+const W=1080,H=1920,VERSION='v0.11.0-timed-levels';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
 type LabSpawn={r:number;c:number;value:number};
@@ -87,7 +87,7 @@ export class MechanicSelectScene extends Phaser.Scene{
 
 export class MechanicTestScene extends Phaser.Scene{
   level!:MechanicLevel;grid=empty();voids=new Set<string>();blockers=new Set<string>();ice=new Map<string,number>();
-  special=new Map<string,string>();moves=0;score=0;combo=0;turn=0;gateTimer=0;nextValue=2;failed=false;
+  special=new Map<string,string>();timeLeft=0;score=0;combo=0;turn=0;gateTimer=0;nextValue=2;failed=false;timeExpired=false;countdown?:Phaser.Time.TimerEvent;
   board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';animating=false;mother={r:0,c:0};
   constructor(){super('mechanic-test')}
   preload(){
@@ -114,14 +114,28 @@ export class MechanicTestScene extends Phaser.Scene{
     this.reset();
   }
   reset(){
-    this.grid=empty();this.voids.clear();this.blockers.clear();this.ice.clear();this.special.clear();this.moves=this.level.moves;this.score=0;this.combo=0;this.turn=0;this.gateTimer=0;this.failed=false;this.nextValue=2;
+    this.countdown?.remove(false);this.grid=empty();this.voids.clear();this.blockers.clear();this.ice.clear();this.special.clear();this.timeLeft=this.level.timeLimit;this.score=0;this.combo=0;this.turn=0;this.gateTimer=0;this.failed=false;this.timeExpired=false;this.nextValue=2;
     this.setup();
     const unavailable=new Set([...this.voids,...this.blockers,...this.ice.keys(),...this.special.keys()]);
     for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(this.grid[r][c])unavailable.add(K(r,c));
     if(this.level.id===8)for(let c=0;c<5;c++)unavailable.add(K(2,c));
     if(this.level.id===9)for(let r=1;r<=3;r++)for(let c=1;c<=3;c++)unavailable.add(K(r,c));
     if(this.level.id===43)[[1,2],[2,1],[2,3],[3,2]].forEach(([r,c])=>unavailable.add(K(r,c)));
-    this.mother=chooseMotherCell(5,5,unavailable);this.render();
+    this.mother=chooseMotherCell(5,5,unavailable);this.render();this.startCountdown();
+  }
+  startCountdown(){
+    this.updateStatus();
+    this.countdown=this.time.addEvent({delay:1000,loop:true,callback:()=>{
+      if(this.timeExpired)return;
+      this.timeLeft=Math.max(0,this.timeLeft-1);this.updateStatus();
+      if(this.timeLeft===0){this.timeExpired=true;this.animating=false;this.countdown?.remove(false);this.countdown=undefined;this.updateStatus()}
+    }});
+  }
+  updateStatus(){
+    const minutes=Math.floor(this.timeLeft/60),seconds=this.timeLeft%60,max=Math.max(...this.grid.flat()),done=this.level.id===33?max===this.level.target:max>=this.level.target;
+    const time=`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+    this.status?.setText(`剩余时间 ${time}\n分数 ${this.score}\n目标 ${this.level.target}\n${this.timeExpired?'时间到 · 测试失败':this.failed?'规则失败':done?'目标完成':''}${this.level.id===40?'\n连击 ×'+this.combo:''}${this.level.id===49?'\n下一个 '+this.nextValue:''}`);
+    this.status?.setColor(this.timeLeft<=10?'#b94a3b':'#655b51');
   }
   setup(){
     const id=this.level.id;
@@ -166,8 +180,8 @@ export class MechanicTestScene extends Phaser.Scene{
     return f;
   }
   act(dir:Dir){
-    if(this.moves<=0||this.animating)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
-    this.animating=true;this.grid=m.grid;this.moves--;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
+    if(this.timeExpired||this.animating)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
+    this.animating=true;this.grid=m.grid;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
     const spawned:LabSpawn[]=[];const shouldSpawn=this.level.id!==45||m.merges>0;
     if(shouldSpawn){const tile=this.spawn(dir);if(tile)spawned.push(tile)}
     if(this.level.id===46){const tile=this.spawn(dir);if(tile)spawned.push(tile)}
@@ -278,8 +292,7 @@ export class MechanicTestScene extends Phaser.Scene{
         this.time.delayedCall(leading(motion)*18,step);
       }
     }else this.animating=false;
-    const max=Math.max(...this.grid.flat()),done=this.level.id===33?max===this.level.target:max>=this.level.target;
-    this.status.setText(`剩余 ${this.moves} 步\n分数 ${this.score}\n目标 ${this.level.target}\n${this.failed?'规则失败':done?'目标完成':''}${this.level.id===40?'\n连击 ×'+this.combo:''}${this.level.id===49?'\n下一个 '+this.nextValue:''}`);
+    this.updateStatus();
     textCleanup(this);this.add.text(W/2,1425,'滑动棋盘观察机制变化',{fontSize:'28px',color:'#887e72'}).setOrigin(.5).setName('lab-hint');
     this.add.text(W/2,1815,VERSION,{fontSize:'22px',color:'#aaa095'}).setOrigin(.5).setName('lab-version');
   }
