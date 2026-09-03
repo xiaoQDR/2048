@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import {MECHANIC_LEVELS,getMechanicLevel,type MechanicLevel} from './mechanicLevels';
+import {chooseMotherCell} from './core2048';
 
-const W=1080,H=1920,VERSION='v0.9.4-no-flash';
+const W=1080,H=1920,VERSION='v0.10.0-mother-spawn';
 type Dir='left'|'right'|'up'|'down';
 type LabMotion={fromR:number;fromC:number;toR:number;toC:number;value:number};
+type LabSpawn={r:number;c:number;value:number};
 const K=(r:number,c:number)=>r+','+c;
 const parse=(k:string)=>k.split(',').map(Number) as [number,number];
 const clone=(g:number[][])=>g.map(r=>[...r]);
@@ -86,7 +88,7 @@ export class MechanicSelectScene extends Phaser.Scene{
 export class MechanicTestScene extends Phaser.Scene{
   level!:MechanicLevel;grid=empty();voids=new Set<string>();blockers=new Set<string>();ice=new Map<string,number>();
   special=new Map<string,string>();moves=0;score=0;combo=0;turn=0;gateTimer=0;nextValue=2;failed=false;
-  board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';animating=false;
+  board!:Phaser.GameObjects.Container;status!:Phaser.GameObjects.Text;touch?:Phaser.Math.Vector2;lastDir:Dir='left';animating=false;mother={r:0,c:0};
   constructor(){super('mechanic-test')}
   preload(){
     this.load.svg('lab-stump','./assets/stump.svg');
@@ -113,7 +115,13 @@ export class MechanicTestScene extends Phaser.Scene{
   }
   reset(){
     this.grid=empty();this.voids.clear();this.blockers.clear();this.ice.clear();this.special.clear();this.moves=this.level.moves;this.score=0;this.combo=0;this.turn=0;this.gateTimer=0;this.failed=false;this.nextValue=2;
-    this.setup();this.render();
+    this.setup();
+    const unavailable=new Set([...this.voids,...this.blockers,...this.ice.keys(),...this.special.keys()]);
+    for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(this.grid[r][c])unavailable.add(K(r,c));
+    if(this.level.id===8)for(let c=0;c<5;c++)unavailable.add(K(2,c));
+    if(this.level.id===9)for(let r=1;r<=3;r++)for(let c=1;c<=3;c++)unavailable.add(K(r,c));
+    if(this.level.id===43)[[1,2],[2,1],[2,3],[3,2]].forEach(([r,c])=>unavailable.add(K(r,c)));
+    this.mother=chooseMotherCell(5,5,unavailable);this.render();
   }
   setup(){
     const id=this.level.id;
@@ -150,7 +158,7 @@ export class MechanicTestScene extends Phaser.Scene{
     if(id===50)this.special.set(K(0,2),'3步后障碍');
   }
   fixed(){
-    const f=new Set([...this.blockers,...this.ice.keys()]);
+    const f=new Set([...this.blockers,...this.ice.keys(),K(this.mother.r,this.mother.c)]);
     if(this.level.id===21||this.level.id===30||this.level.id===48)f.add(K(2,2));
     if(this.level.id===22&&this.turn%2===1)f.add(K(2,2));
     if(this.level.id===23&&this.turn%2===0)f.add(K(2,2));
@@ -160,7 +168,10 @@ export class MechanicTestScene extends Phaser.Scene{
   act(dir:Dir){
     if(this.moves<=0||this.animating)return;this.lastDir=dir;const before=clone(this.grid),m=moveBoard(this.grid,dir,this.voids,this.fixed(),this.level.id);if(!m.moved)return;
     this.animating=true;this.grid=m.grid;this.moves--;this.turn++;this.score+=m.gained;this.combo=m.merges?this.combo+1:0;this.effects(before,m.gained,m.merges,dir);
-    const shouldSpawn=this.level.id!==45||m.merges>0;if(shouldSpawn)this.spawn(dir);if(this.level.id===46)this.spawn(dir);this.render(m.motions);
+    const spawned:LabSpawn[]=[];const shouldSpawn=this.level.id!==45||m.merges>0;
+    if(shouldSpawn){const tile=this.spawn(dir);if(tile)spawned.push(tile)}
+    if(this.level.id===46){const tile=this.spawn(dir);if(tile)spawned.push(tile)}
+    this.render(m.motions,spawned);
   }
   effects(before:number[][],gained:number,merges:number,dir:Dir){
     const id=this.level.id,max=Math.max(...this.grid.flat());
@@ -188,18 +199,19 @@ export class MechanicTestScene extends Phaser.Scene{
   }
   rotateCenter(){const a=clone(this.grid);for(let r=1;r<=3;r++)for(let c=1;c<=3;c++)this.grid[r][c]=a[4-c][r]}
   find(v:number){for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(this.grid[r][c]===v)return[r,c] as[number,number]}
-  firstEmpty(){for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(!this.grid[r][c]&&!this.voids.has(K(r,c))&&!this.blockers.has(K(r,c)))return[r,c] as[number,number]}
+  firstEmpty(){for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(!this.grid[r][c]&&K(r,c)!==K(this.mother.r,this.mother.c)&&!this.voids.has(K(r,c))&&!this.blockers.has(K(r,c)))return[r,c] as[number,number]}
   spawn(dir:Dir){
-    const spots:Array<[number,number]>=[];for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(!this.grid[r][c]&&!this.voids.has(K(r,c))&&!this.blockers.has(K(r,c))){
+    const spots:Array<[number,number]>=[];for(let r=0;r<5;r++)for(let c=0;c<5;c++)if(!this.grid[r][c]&&K(r,c)!==K(this.mother.r,this.mother.c)&&!this.voids.has(K(r,c))&&!this.blockers.has(K(r,c))){
       if(this.level.id===42&&!(r===4&&c===2))continue;
       if(this.level.id===44){if(dir==='left'&&c!==4||dir==='right'&&c!==0||dir==='up'&&r!==4||dir==='down'&&r!==0)continue}
       spots.push([r,c]);
     }
-    if(!spots.length)return;const p=spots[(this.turn*7+this.level.id)%spots.length];
-    const seq=this.level.id===47?[8,16,8,4]:this.level.id===41?[2,2,4,2]:[this.nextValue];this.grid[p[0]][p[1]]=this.level.id===48?-3:seq[this.turn%seq.length];
+    if(!spots.length)return null;const p=spots[(this.turn*7+this.level.id)%spots.length];
+    const seq=this.level.id===47?[8,16,8,4]:this.level.id===41?[2,2,4,2]:[this.nextValue],value=this.level.id===48?-3:seq[this.turn%seq.length];this.grid[p[0]][p[1]]=value;
     if(this.level.id===48)this.blockers.add(K(p[0],p[1]));
+    return{r:p[0],c:p[1],value};
   }
-  render(motions:LabMotion[]=[]){
+  render(motions:LabMotion[]=[],spawned:LabSpawn[]=[]){
     this.board.removeAll(true);const cell=154,gap=0,ox=155,oy=520;
     const center=(r:number,c:number)=>({x:ox+c*(cell+gap)+cell/2,y:oy+r*(cell+gap)+cell/2});
     const addPiece=(v:number,x:number,y:number)=>{
@@ -210,6 +222,12 @@ export class MechanicTestScene extends Phaser.Scene{
       else{const name=v===-1?'万能':v===-3?'污染':v===-5?'幽灵':String(v);piece.add(text(this,0,0,name,v<0?22:43,v>4?'#fff':'#655b51'))}
       return piece;
     };
+    const motherPos=center(this.mother.r,this.mother.c),motherPiece=this.add.container(motherPos.x,motherPos.y);
+    motherPiece.add(this.add.rectangle(0,0,cell,cell,0x72549a));
+    motherPiece.add(this.add.circle(0,0,cell*.29,0xf3d58f));
+    motherPiece.add(this.add.circle(-cell*.15,-cell*.12,cell*.07,0xfff2c7));
+    motherPiece.add(this.add.circle(cell*.15,-cell*.12,cell*.07,0xfff2c7));
+    motherPiece.add(text(this,0,cell*.08,'母',43,'#5b3e77'));
     const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<5;r++)for(let c=0;c<5;c++){
       const k=K(r,c),x=ox+c*(cell+gap),y=oy+r*(cell+gap),cx=x+cell/2,cy=y+cell/2;if(this.voids.has(k))continue;
@@ -221,6 +239,7 @@ export class MechanicTestScene extends Phaser.Scene{
         else if(this.level.id===48)obstacle.add(this.add.image(0,0,'lab-slime').setDisplaySize(cell*.76,cell*.76));
         else obstacle.add(text(this,0,0,this.special.get(k)||'障碍',22,'#fff'));this.board.add(obstacle);continue;
       }
+      if(k===K(this.mother.r,this.mother.c)){this.board.add(motherPiece);continue}
       const v=this.grid[r][c];
       if(v){const piece=addPiece(v,cx,cy);finalPieces.set(k,piece);if(motions.length)piece.setAlpha(0);this.board.add(piece)}
       if(this.ice.has(k))this.board.add(this.add.image(cx,cy,'lab-ice').setDisplaySize(cell,cell).setAlpha(.9));
@@ -231,10 +250,20 @@ export class MechanicTestScene extends Phaser.Scene{
       else if(s)this.board.add(this.add.text(cx,cy-cell*.36,s,{fontSize:'16px',color:'#4b4037',backgroundColor:'#ffffffcc'}).setOrigin(.5));
     }
     if(motions.length){
+      const spawnKeys=new Set(spawned.map(s=>K(s.r,s.c)));
       let remaining=motions.length,finished=false;const ghosts:Phaser.GameObjects.Container[]=[];
+      const spray=(index=0)=>{
+        if(index>=spawned.length){this.animating=false;return}
+        const item=spawned[index],target=center(item.r,item.c),seed=addPiece(item.value,motherPos.x,motherPos.y).setScale(.35);
+        this.board.add(seed);this.tweens.add({targets:motherPiece,scaleX:1.08,scaleY:.92,duration:90,yoyo:true,ease:'Sine.InOut'});
+        const flight={t:0},controlX=(motherPos.x+target.x)/2,controlY=Math.min(motherPos.y,target.y)-cell*.65;
+        this.tweens.add({targets:flight,t:1,duration:280,ease:'Sine.Out',onUpdate:()=>{
+          const t=flight.t,u=1-t;seed.setPosition(u*u*motherPos.x+2*u*t*controlX+t*t*target.x,u*u*motherPos.y+2*u*t*controlY+t*t*target.y);seed.setScale(.35+.65*t);
+        },onComplete:()=>{seed.destroy();finalPieces.get(K(item.r,item.c))?.setAlpha(1);spray(index+1)}});
+      };
       const arrive=()=>{
-        if(--remaining>0||finished)return;finished=true;finalPieces.forEach(piece=>piece.setAlpha(1));
-        this.tweens.add({targets:ghosts,alpha:0,duration:48,ease:'Linear',onComplete:()=>{ghosts.forEach(g=>g.destroy());this.animating=false}});
+        if(--remaining>0||finished)return;finished=true;finalPieces.forEach((piece,k)=>{if(!spawnKeys.has(k))piece.setAlpha(1)});
+        this.tweens.add({targets:ghosts,alpha:0,duration:48,ease:'Linear',onComplete:()=>{ghosts.forEach(g=>g.destroy());spray()}});
       };
       const leading=(m:LabMotion)=>this.lastDir==='left'?m.fromC:this.lastDir==='right'?4-m.fromC:this.lastDir==='up'?m.fromR:4-m.fromR;
       for(const motion of motions){

@@ -2,13 +2,14 @@ import Phaser from 'phaser';
 import './style.css';
 import {LEVELS,getLevel,type LevelConfig,type Pos} from './levels';
 import {HomeScene,MechanicSelectScene,MechanicTestScene} from './mechanicMode';
-import {move2048,hasLegalMove,type TileTransition} from './core2048';
+import {move2048,hasLegalMove,chooseMotherCell,type TileTransition} from './core2048';
 
-const APP_VERSION='v0.9.4-no-flash';
+const APP_VERSION='v0.10.0-mother-spawn';
 const TEST_UNLOCK_ALL=true;
 const W=1080,H=1920;
 type Direction='left'|'right'|'up'|'down';
 type Motion=TileTransition;
+type SpawnedTile=Pos&{value:number};
 type AntState={revealed:boolean;rescued:boolean};
 type Snapshot={
   grid:number[][];score:number;movesLeft:number;rngState:number;
@@ -56,7 +57,7 @@ class GameScene extends Phaser.Scene{
   config!:LevelConfig;grid:number[][]=[];score=0;movesLeft=0;rngState=1;previous:Snapshot|null=null;
   blockers=new Set<string>();voids=new Set<string>();ice=new Map<string,number>();orders:number[]=[];ants=new Map<string,AntState>();
   rescued=0;targetDone=false;board!:Phaser.GameObjects.Container;movesText!:Phaser.GameObjects.Text;scoreText!:Phaser.GameObjects.Text;
-  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;
+  objectiveText!:Phaser.GameObjects.Text;start?:Phaser.Math.Vector2;overlay?:Phaser.GameObjects.Container;lastDir:Direction='left';animating=false;mother:Pos={r:0,c:0};
   readonly bx=90;readonly by=600;readonly boardSize=900;readonly gap=0;
   constructor(){super('game')}
   preload(){
@@ -91,23 +92,24 @@ class GameScene extends Phaser.Scene{
     if(moves)this.movesText=t;if(score)this.scoreText=t;
   }
   mechanicName(){let name=this.config.ants?'蚂蚁':this.config.orders?'订单':this.config.ice?'冰块':this.config.blockers?'树桩':'合成';if(this.config.voids)name+='·异形';return (this.config.boardCols||this.config.boardSize)+'×'+(this.config.boardRows||this.config.boardSize)+' '+name}
-  fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys()])}
+  fixed(){return new Set([...this.blockers,...this.voids,...this.ice.keys(),key(this.mother.r,this.mother.c)])}
   random(){let t=this.rngState+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}
   restart(){
     this.hideOverlay();const rows=this.config.boardRows||this.config.boardSize,cols=this.config.boardCols||this.config.boardSize;this.grid=empty(rows,cols);this.score=0;this.movesLeft=this.config.moveLimit;this.rngState=this.config.seed;this.previous=null;
     this.blockers=new Set((this.config.blockers||[]).map(p=>key(p.r,p.c)));this.voids=new Set((this.config.voids||[]).map(p=>key(p.r,p.c)));this.ice=new Map();this.orders=[...(this.config.orders||[])];this.ants=new Map();this.rescued=0;this.targetDone=false;
     for(const p of this.config.ice||[]){this.grid[p.r][p.c]=p.value;this.ice.set(key(p.r,p.c),p.layers)}
     for(const p of this.config.ants||[])this.ants.set(key(p.r,p.c),{revealed:false,rescued:false});
+    this.mother=chooseMotherCell(rows,cols,new Set([...this.blockers,...this.voids,...this.ice.keys(),...this.ants.keys()]));
     this.addRandom();this.addRandom();
     for(const [k,a] of this.ants){const [r,c]=parseKey(k);if(!this.grid[r][c]&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k))this.grid[r][c]=2}
     this.render(false);
   }
-  addRandom():Pos|null{
+  addRandom():SpawnedTile|null{
     const spots:Pos[]=[];this.grid.forEach((row,r)=>row.forEach((v,c)=>{
-      const k=key(r,c),ant=this.ants.get(k);if(!v&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k)&&!(ant?.revealed&&!ant.rescued))spots.push({r,c});
+      const k=key(r,c),ant=this.ants.get(k);if(!v&&k!==key(this.mother.r,this.mother.c)&&!this.blockers.has(k)&&!this.voids.has(k)&&!this.ice.has(k)&&!(ant?.revealed&&!ant.rescued))spots.push({r,c});
     }));
     if(!spots.length)return null;
-    const p=spots[Math.floor(this.random()*spots.length)];this.grid[p.r][p.c]=this.random()<.9?2:4;return p;
+    const p=spots[Math.floor(this.random()*spots.length)],value=this.random()<.9?2:4;this.grid[p.r][p.c]=value;return {...p,value};
   }
   snapshot():Snapshot{return {grid:clone(this.grid),score:this.score,movesLeft:this.movesLeft,rngState:this.rngState,ice:[...this.ice],orders:[...this.orders],ants:[...this.ants].map(([k,v])=>[k,{...v}]),rescued:this.rescued,targetDone:this.targetDone}}
   move(dir:Direction){
@@ -117,9 +119,8 @@ class GameScene extends Phaser.Scene{
     this.previous=this.snapshot();this.grid=result.grid;this.score+=result.score;this.movesLeft--;
     if(this.config.target&&this.grid.some(r=>r.some(v=>v>=this.config.target!)))this.targetDone=true;
     this.thawIce(before,result.score);this.collectOrders();this.updateAnts(before);
-    if(this.isComplete()){this.render(true,result.transitions,null,result.mergedCells,()=>this.complete());return}
-    const spawned=this.addRandom(),lost=this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed());
-    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(lost)this.showResult(false,0)});
+    const spawned=this.addRandom(),complete=this.isComplete(),lost=this.movesLeft<=0||!hasLegalMove(this.grid,this.fixed());
+    this.render(true,result.transitions,spawned,result.mergedCells,()=>{if(complete)this.complete();else if(lost)this.showResult(false,0)});
   }
   thawIce(before:number[][],gained:number){
     if(!gained)return;const changed=(r:number,c:number)=>before[r]?.[c]!==this.grid[r]?.[c];
@@ -143,7 +144,7 @@ class GameScene extends Phaser.Scene{
   }
   hasExit(r:number,c:number){
     const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid[0].length)return true;const k=key(a,b);if(this.grid[a][b]||this.blockers.has(k)||this.voids.has(k)||this.ice.has(k))return false}});
+    return dirs.some(([dr,dc])=>{let a=r,b=c;while(true){a+=dr;b+=dc;if(a<0||b<0||a>=this.grid.length||b>=this.grid[0].length)return true;const k=key(a,b);if(k===key(this.mother.r,this.mother.c)||this.grid[a][b]||this.blockers.has(k)||this.voids.has(k)||this.ice.has(k))return false}});
   }
   isComplete(){
     const targetOk=!this.config.target||this.targetDone,ordersOk=!this.config.orders||this.orders.length===0,iceOk=!this.config.clearIce||this.ice.size===0,antsOk=!this.config.rescueAnts||this.rescued>=this.config.rescueAnts;
@@ -161,7 +162,7 @@ class GameScene extends Phaser.Scene{
     if(this.config.rescueAnts)lines.push(`${this.rescued>=this.config.rescueAnts?'✓':'○'} 放出蚂蚁 ${this.rescued}/${this.config.rescueAnts}`);
     return lines.join('\n');
   }
-  render(animate:boolean,motions:Motion[]=[],spawned:Pos|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[],onDone?:()=>void){
+  render(animate:boolean,motions:Motion[]=[],spawned:SpawnedTile|null=null,mergedCells:Array<{r:number;c:number;value:number}>=[],onDone?:()=>void){
     this.board.removeAll(true);
     const rows=this.grid.length,cols=this.grid[0].length;
     const cell=Math.min((this.boardSize-this.gap*(cols+1))/cols,(this.boardSize-this.gap*(rows+1))/rows);
@@ -175,6 +176,12 @@ class GameScene extends Phaser.Scene{
       piece.add(this.add.text(0,2,String(v),{fontFamily:'Arial Black',fontSize:(digits<3?Math.min(88,cell*.38):Math.min(70,cell*.3))+'px',color:v<=4?'#776e65':'#fff'}).setOrigin(.5));
       return piece;
     };
+    const motherPos=center(this.mother.r,this.mother.c),motherPiece=this.add.container(motherPos.x,motherPos.y);
+    motherPiece.add(this.add.rectangle(0,0,cell,cell,0x72549a));
+    motherPiece.add(this.add.circle(0,0,cell*.29,0xf3d58f));
+    motherPiece.add(this.add.circle(-cell*.15,-cell*.12,cell*.07,0xfff2c7));
+    motherPiece.add(this.add.circle(cell*.15,-cell*.12,cell*.07,0xfff2c7));
+    motherPiece.add(this.add.text(0,cell*.08,'母',{fontFamily:'Arial,sans-serif',fontSize:Math.min(54,cell*.28)+'px',fontStyle:'bold',color:'#5b3e77'}).setOrigin(.5));
     const finalPieces=new Map<string,Phaser.GameObjects.Container>();
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
       const k=key(r,c),p=center(r,c);if(this.voids.has(k))continue;
@@ -185,6 +192,7 @@ class GameScene extends Phaser.Scene{
         stump.add(this.add.rectangle(0,0,cell,cell,0x79543a));
         stump.add(this.add.image(0,0,'art-stump').setDisplaySize(cell*.88,cell*.88));this.board.add(stump);continue;
       }
+      if(k===key(this.mother.r,this.mother.c)){this.board.add(motherPiece);continue}
       const ant=this.ants.get(k);
       if(ant?.revealed&&!ant.rescued&&!this.grid[r][c])this.board.add(this.add.image(p.x,p.y,'art-ant').setDisplaySize(cell*.62,cell*.62));
       const v=this.grid[r][c];
@@ -195,16 +203,26 @@ class GameScene extends Phaser.Scene{
       }
     }
     if(animate&&motions.length){
-      const hidden=new Set(motions.map(m=>key(m.toR,m.toC)));if(spawned)hidden.add(key(spawned.r,spawned.c));
+      const spawnKey=spawned?key(spawned.r,spawned.c):null;
+      const hidden=new Set(motions.map(m=>key(m.toR,m.toC)));if(spawnKey)hidden.add(spawnKey);
       hidden.forEach(k=>finalPieces.get(k)?.setAlpha(0));
       const ghosts:Phaser.GameObjects.Container[]=[];let remaining=0,finished=false;
+      const finish=()=>{this.animating=false;onDone?.()};
+      const spray=()=>{
+        if(!spawned){finish();return}
+        const target=center(spawned.r,spawned.c),seed=makePiece(spawned.value,motherPos.x,motherPos.y).setScale(.35);
+        this.board.add(seed);this.tweens.add({targets:motherPiece,scaleX:1.08,scaleY:.92,duration:90,yoyo:true,ease:'Sine.InOut'});
+        const flight={t:0},controlX=(motherPos.x+target.x)/2,controlY=Math.min(motherPos.y,target.y)-cell*.65;
+        this.tweens.add({targets:flight,t:1,duration:280,ease:'Sine.Out',onUpdate:()=>{
+          const t=flight.t,u=1-t;seed.setPosition(u*u*motherPos.x+2*u*t*controlX+t*t*target.x,u*u*motherPos.y+2*u*t*controlY+t*t*target.y);seed.setScale(.35+.65*t);
+        },onComplete:()=>{seed.destroy();finalPieces.get(spawnKey!)?.setAlpha(1);finish()}});
+      };
       const reveal=()=>{
         if(finished)return;finished=true;
-        hidden.forEach(k=>finalPieces.get(k)?.setAlpha(1));
+        hidden.forEach(k=>{if(k!==spawnKey)finalPieces.get(k)?.setAlpha(1)});
         for(const m of mergedCells)finalPieces.get(key(m.r,m.c))?.setAlpha(1);
-        if(spawned)finalPieces.get(key(spawned.r,spawned.c))?.setAlpha(1);
         this.tweens.add({targets:ghosts,alpha:0,duration:48,ease:'Linear',onComplete:()=>{
-          ghosts.forEach(g=>g.destroy());this.animating=false;onDone?.();
+          ghosts.forEach(g=>g.destroy());spray();
         }});
       };
       for(const motion of motions){

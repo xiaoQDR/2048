@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {move2048} from '../src/core2048';
+import {chooseMotherCell,move2048} from '../src/core2048';
 
 const row=(v:number[])=>[v];
 test('three equal tiles merge only the leading pair',()=>{
@@ -33,4 +33,13 @@ test('vertical traversal uses the leading edge first',()=>{
 });
 test('merge score equals the created tile values',()=>{
   assert.equal(move2048(row([2,2,4,4]),'left').score,12);
+});
+test('mother tile uses the nearest available center cell',()=>{
+  assert.deepEqual(chooseMotherCell(5,5),{r:2,c:2});
+  assert.deepEqual(chooseMotherCell(5,5,new Set(['2,2','1,2'])),{r:2,c:1});
+});
+test('mother tile blocks movement like a fixed board cell',()=>{
+  const mother={r:0,c:2};
+  const blocked=new Set([`${mother.r},${mother.c}`]);
+  assert.deepEqual(move2048([[2,0,0,4,0]],'right',blocked).grid,[[0,2,0,0,4]]);
 });

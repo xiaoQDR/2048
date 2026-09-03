@@ -1,4 +1,5 @@
 export type MoveDirection='left'|'right'|'up'|'down';
+export interface CellPosition{r:number;c:number}
 export interface TileTransition{
   fromR:number;fromC:number;toR:number;toC:number;value:number;
   kind:'move'|'merge-source';
@@ -12,6 +13,17 @@ interface Tile{
 }
 const key=(r:number,c:number)=>r+','+c;
 const copy=(g:number[][])=>g.map(row=>[...row]);
+
+export function chooseMotherCell(rows:number,cols:number,unavailable:Set<string>=new Set()):CellPosition{
+  const centerR=(rows-1)/2,centerC=(cols-1)/2,candidates:CellPosition[]=[];
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(!unavailable.has(key(r,c)))candidates.push({r,c});
+  if(!candidates.length)throw new Error('No available cell for mother tile');
+  candidates.sort((a,b)=>{
+    const da=Math.abs(a.r-centerR)+Math.abs(a.c-centerC),db=Math.abs(b.r-centerR)+Math.abs(b.c-centerC);
+    return da-db||a.r-b.r||a.c-b.c;
+  });
+  return candidates[0];
+}
 
 export function move2048(values:number[][],direction:MoveDirection,blocked:Set<string>=new Set()):MoveOutcome{
   const rows=values.length,cols=values[0].length;
