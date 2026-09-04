@@ -87,6 +87,37 @@ export function comboTier(combo:number):0|3|4{
   return combo>=4?4:combo===3?3:0;
 }
 
+export function createStageGoals(finalTarget:number,prescribed:number[]=[]){
+  if(prescribed.length)return [...prescribed];
+  const target=Math.max(8,finalTarget);
+  return [Math.max(4,target/4),Math.max(4,target/2),target];
+}
+
+export function countPotentialMerges(values:number[][],blocked:Set<string>=new Set()){
+  let count=0;
+  for(let r=0;r<values.length;r++)for(let c=0;c<values[0].length;c++){
+    const value=values[r][c];if(value<=0||blocked.has(key(r,c)))continue;
+    if(c+1<values[0].length&&!blocked.has(key(r,c+1))&&values[r][c+1]===value)count++;
+    if(r+1<values.length&&!blocked.has(key(r+1,c))&&values[r+1][c]===value)count++;
+  }
+  return count;
+}
+
+export function createControlledFullBoard(values:number[][],blocked:Set<string>=new Set(),random:()=>number=Math.random){
+  const spots:CellPosition[]=[];
+  for(let r=0;r<values.length;r++)for(let c=0;c<values[0].length;c++)if(!values[r][c]&&!blocked.has(key(r,c)))spots.push({r,c});
+  const required=Math.min(3,Math.floor(spots.length/2));
+  let best=copy(values),bestPairs=-1;
+  for(let attempt=0;attempt<80;attempt++){
+    const candidate=copy(values);
+    for(const spot of spots){const roll=random();candidate[spot.r][spot.c]=roll<.62?2:roll<.91?4:8}
+    const pairs=countPotentialMerges(candidate,blocked);
+    if(pairs>bestPairs){best=candidate;bestPairs=pairs}
+    if(pairs>=required&&hasLegalMove(candidate,blocked))return candidate;
+  }
+  return best;
+}
+
 export function hasLegalMove(values:number[][],blocked:Set<string>=new Set()){
   return(['left','right','up','down'] as MoveDirection[]).some(d=>move2048(values,d,blocked).moved);
 }
